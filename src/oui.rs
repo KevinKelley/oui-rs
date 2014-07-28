@@ -33,7 +33,7 @@ struct ItemImp {
 
     // parent item
     parent: Item,
-    // index of kid relative to parent (what # child am I?)
+    // index of kid relative to parent (what number child am I?)
     kidid: i32,
     // index of next sibling with same parent
     nextitem: Item,
@@ -311,8 +311,7 @@ impl Context {
     }
 
     pub fn uiSetFrozen(&mut self, item: Item, enable: bool) {
-        let pitem = self.get(item);
-        pitem.frozen = enable;
+        self.get(item).frozen = enable;
     }
 
     pub fn uiSetSize(&mut self, item: Item, w: i32, h: i32) {
