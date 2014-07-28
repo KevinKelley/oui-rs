@@ -2,7 +2,7 @@
 /* then hacked --klk */
 #![allow(unused_imports)]  // temporarily
 
-//use libc::{c_int, c_uint, c_ulonglong, c_void };
+use libc::{c_int, c_uint, c_ulonglong, c_void };
 
 // maximum number of items that may be added
 pub static UI_MAX_ITEMS:u32 = 4096;
@@ -14,37 +14,37 @@ pub static UI_MAX_DATASIZE:u32 = 4096;
 // maximum depth of nested containers
 pub static UI_MAX_DEPTH:u32 = 64;
 
-pub type UIuint = ::libc::c_uint;
+pub type UIuint = c_uint;
 pub enum Struct_UIcontext { }
 pub type UIcontext = Struct_UIcontext;
-pub type UIhandle = ::libc::c_ulonglong;
-pub type Enum_UIitemState = ::libc::c_uint;
-pub static UI_COLD: ::libc::c_uint = 0;
-pub static UI_HOT: ::libc::c_uint = 1;
-pub static UI_ACTIVE: ::libc::c_uint = 2;
-pub static UI_FROZEN: ::libc::c_uint = 3;
+pub type UIhandle = c_ulonglong;
+pub type Enum_UIitemState = c_uint;
+pub static UI_COLD: c_uint = 0;
+pub static UI_HOT: c_uint = 1;
+pub static UI_ACTIVE: c_uint = 2;
+pub static UI_FROZEN: c_uint = 3;
 pub type UIitemState = Enum_UIitemState;
-pub type Enum_UIlayoutFlags = ::libc::c_uint;
-pub static UI_LEFT: ::libc::c_uint = 1;
-pub static UI_TOP: ::libc::c_uint = 2;
-pub static UI_RIGHT: ::libc::c_uint = 4;
-pub static UI_DOWN: ::libc::c_uint = 8;
-pub static UI_HFILL: ::libc::c_uint = 5;
-pub static UI_VFILL: ::libc::c_uint = 10;
-pub static UI_HCENTER: ::libc::c_uint = 0;
-pub static UI_VCENTER: ::libc::c_uint = 0;
-pub static UI_CENTER: ::libc::c_uint = 0;
-pub static UI_FILL: ::libc::c_uint = 15;
+pub type Enum_UIlayoutFlags = c_uint;
+pub static UI_LEFT: c_uint = 1;
+pub static UI_TOP: c_uint = 2;
+pub static UI_RIGHT: c_uint = 4;
+pub static UI_DOWN: c_uint = 8;
+pub static UI_HFILL: c_uint = 5;
+pub static UI_VFILL: c_uint = 10;
+pub static UI_HCENTER: c_uint = 0;
+pub static UI_VCENTER: c_uint = 0;
+pub static UI_CENTER: c_uint = 0;
+pub static UI_FILL: c_uint = 15;
 pub type UIlayoutFlags = Enum_UIlayoutFlags;
-pub type Enum_UIevent = ::libc::c_uint;
-pub static UI_BUTTON0_DOWN: ::libc::c_uint = 1;
-pub static UI_BUTTON0_UP: ::libc::c_uint = 2;
-pub static UI_BUTTON0_HOT_UP: ::libc::c_uint = 4;
-pub static UI_BUTTON0_CAPTURE: ::libc::c_uint = 8;
-pub static UI_APPEND: ::libc::c_uint = 16;
+pub type Enum_UIevent = c_uint;
+pub static UI_BUTTON0_DOWN: c_uint = 1;
+pub static UI_BUTTON0_UP: c_uint = 2;
+pub static UI_BUTTON0_HOT_UP: c_uint = 4;
+pub static UI_BUTTON0_CAPTURE: c_uint = 8;
+pub static UI_APPEND: c_uint = 16;
 pub type UIevent = Enum_UIevent;
 pub type UIhandler =
-    ::std::option::Option<extern "C" fn(arg1: ::libc::c_int, arg2: UIevent)>;
+    ::std::option::Option<extern "C" fn(arg1: c_int, arg2: UIevent)>;
 
 #[repr(C)]
 pub struct Struct_UIvec2;
@@ -53,14 +53,14 @@ pub struct Union_Unnamed1 {
     pub data: [u32, ..2u],
 }
 impl Union_Unnamed1 {
-    pub fn v(&mut self) -> *mut [::libc::c_int, ..2u] {
+    pub fn v(&mut self) -> *mut [c_int, ..2u] {
         unsafe { ::std::mem::transmute(self) }
     }
 }
 #[repr(C)]
 pub struct Struct_Unnamed2 {
-    pub x: ::libc::c_int,
-    pub y: ::libc::c_int,
+    pub x: c_int,
+    pub y: c_int,
 }
 pub type UIvec2 = Struct_UIvec2;
 #[repr(C)]
@@ -70,72 +70,72 @@ pub struct Union_Unnamed3 {
     pub data: [u32, ..4u],
 }
 impl Union_Unnamed3 {
-    pub fn v(&mut self) -> *mut [::libc::c_int, ..4u] {
+    pub fn v(&mut self) -> *mut [c_int, ..4u] {
         unsafe { ::std::mem::transmute(self) }
     }
 }
 #[repr(C)]
 pub struct Struct_Unnamed4 {
-    pub x: ::libc::c_int,
-    pub y: ::libc::c_int,
-    pub w: ::libc::c_int,
-    pub h: ::libc::c_int,
+    pub x: c_int,
+    pub y: c_int,
+    pub w: c_int,
+    pub h: c_int,
 }
 pub type UIrect = Struct_UIrect;
 extern "C" {
     pub fn uiCreateContext() -> *mut UIcontext;
     pub fn uiMakeCurrent(ctx: *mut UIcontext);
     pub fn uiDestroyContext(ctx: *mut UIcontext);
-    pub fn uiSetCursor(x: ::libc::c_int, y: ::libc::c_int);
+    pub fn uiSetCursor(x: c_int, y: c_int);
     pub fn uiGetCursor() -> UIvec2;
     pub fn uiGetCursorDelta() -> UIvec2;
     pub fn uiGetCursorStart() -> UIvec2;
     pub fn uiGetCursorStartDelta() -> UIvec2;
-    pub fn uiSetButton(button: ::libc::c_int, enabled: ::libc::c_int);
-    pub fn uiGetButton(button: ::libc::c_int) -> ::libc::c_int;
+    pub fn uiSetButton(button: c_int, enabled: c_int);
+    pub fn uiGetButton(button: c_int) -> c_int;
     pub fn uiClear();
     pub fn uiLayout();
     pub fn uiProcess();
-    pub fn uiItem() -> ::libc::c_int;
-    pub fn uiSetFrozen(item: ::libc::c_int, enable: ::libc::c_int);
-    pub fn uiSetHandle(item: ::libc::c_int, handle: UIhandle);
-    pub fn uiAllocData(item: ::libc::c_int, size: ::libc::c_int) ->
-     *mut ::libc::c_void;
-    pub fn uiSetHandler(item: ::libc::c_int, handler: UIhandler,
-                        flags: ::libc::c_int);
-    pub fn uiAppend(item: ::libc::c_int, child: ::libc::c_int) ->
-     ::libc::c_int;
-    pub fn uiSetSize(item: ::libc::c_int, w: ::libc::c_int, h: ::libc::c_int);
-    pub fn uiSetLayout(item: ::libc::c_int, flags: ::libc::c_int);
-    pub fn uiSetMargins(item: ::libc::c_int, l: ::libc::c_int,
-                        t: ::libc::c_int, r: ::libc::c_int, b: ::libc::c_int);
-    pub fn uiSetRelToLeft(item: ::libc::c_int, other: ::libc::c_int);
-    pub fn uiSetRelToTop(item: ::libc::c_int, other: ::libc::c_int);
-    pub fn uiSetRelToRight(item: ::libc::c_int, other: ::libc::c_int);
-    pub fn uiSetRelToDown(item: ::libc::c_int, other: ::libc::c_int);
-    pub fn uiFirstChild(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiLastChild(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiParent(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiNextSibling(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiPrevSibling(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetState(item: ::libc::c_int) -> UIitemState;
-    pub fn uiGetHandle(item: ::libc::c_int) -> UIhandle;
-    pub fn uiGetData(item: ::libc::c_int) -> *const ::libc::c_void;
-    pub fn uiGetHandler(item: ::libc::c_int) -> UIhandler;
-    pub fn uiGetHandlerFlags(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetChildCount(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetChildId(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetRect(item: ::libc::c_int) -> UIrect;
+    pub fn uiItem() -> c_int;
+    pub fn uiSetFrozen(item: c_int, enable: c_int);
+    pub fn uiSetHandle(item: c_int, handle: UIhandle);
+    pub fn uiAllocData(item: c_int, size: c_int) ->
+     *mut c_void;
+    pub fn uiSetHandler(item: c_int, handler: UIhandler,
+                        flags: c_int);
+    pub fn uiAppend(item: c_int, child: c_int) ->
+     c_int;
+    pub fn uiSetSize(item: c_int, w: c_int, h: c_int);
+    pub fn uiSetLayout(item: c_int, flags: c_int);
+    pub fn uiSetMargins(item: c_int, l: c_int,
+                        t: c_int, r: c_int, b: c_int);
+    pub fn uiSetRelToLeft(item: c_int, other: c_int);
+    pub fn uiSetRelToTop(item: c_int, other: c_int);
+    pub fn uiSetRelToRight(item: c_int, other: c_int);
+    pub fn uiSetRelToDown(item: c_int, other: c_int);
+    pub fn uiFirstChild(item: c_int) -> c_int;
+    pub fn uiLastChild(item: c_int) -> c_int;
+    pub fn uiParent(item: c_int) -> c_int;
+    pub fn uiNextSibling(item: c_int) -> c_int;
+    pub fn uiPrevSibling(item: c_int) -> c_int;
+    pub fn uiGetState(item: c_int) -> UIitemState;
+    pub fn uiGetHandle(item: c_int) -> UIhandle;
+    pub fn uiGetData(item: c_int) -> *const c_void;
+    pub fn uiGetHandler(item: c_int) -> UIhandler;
+    pub fn uiGetHandlerFlags(item: c_int) -> c_int;
+    pub fn uiGetChildCount(item: c_int) -> c_int;
+    pub fn uiGetChildId(item: c_int) -> c_int;
+    pub fn uiGetRect(item: c_int) -> UIrect;
     pub fn uiGetActiveRect() -> UIrect;
-    pub fn uiGetWidth(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetHeight(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetLayout(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetMarginLeft(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetMarginTop(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetMarginRight(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetMarginDown(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetRelToLeft(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetRelToTop(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetRelToRight(item: ::libc::c_int) -> ::libc::c_int;
-    pub fn uiGetRelToDown(item: ::libc::c_int) -> ::libc::c_int;
+    pub fn uiGetWidth(item: c_int) -> c_int;
+    pub fn uiGetHeight(item: c_int) -> c_int;
+    pub fn uiGetLayout(item: c_int) -> c_int;
+    pub fn uiGetMarginLeft(item: c_int) -> c_int;
+    pub fn uiGetMarginTop(item: c_int) -> c_int;
+    pub fn uiGetMarginRight(item: c_int) -> c_int;
+    pub fn uiGetMarginDown(item: c_int) -> c_int;
+    pub fn uiGetRelToLeft(item: c_int) -> c_int;
+    pub fn uiGetRelToTop(item: c_int) -> c_int;
+    pub fn uiGetRelToRight(item: c_int) -> c_int;
+    pub fn uiGetRelToDown(item: c_int) -> c_int;
 }

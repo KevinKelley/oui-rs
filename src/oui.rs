@@ -1,12 +1,22 @@
 use super::*;
 use std::mem::{zeroed};
-//use std::ptr;
 
 //#define UI_MAX_KIND 16
 
-struct Item {
+#[deriving(Eq, PartialEq, Clone)]
+pub struct Item {
+    handle: i32
+}
+impl Item {
+    fn wrap(handle: i32) -> Item { Item { handle: handle } }
+    fn none() -> Item { Item::wrap(-1) }
+    fn valid(&self) -> bool { self.handle != -1 }
+    fn invalid(&self) -> bool { !self.valid() }
+}
+struct ItemImp {
     // declaration independent unique handle (for persistence)
     handle: Handle,
+
     // handler
     handler: Handler,
 
@@ -15,20 +25,20 @@ struct Item {
     // number of kids
     numkids: i32,
     // index of first kid
-    firstkid: i32,
+    firstkid: Item,
     // index of last kid
-    lastkid: i32,
+    lastkid: Item,
 
     // child structure
 
     // parent item
-    parent: i32,
-    // index of kid relative to parent
+    parent: Item,
+    // index of kid relative to parent (what # child am I?)
     kidid: i32,
     // index of next sibling with same parent
-    nextitem: i32,
+    nextitem: Item,
     // index of previous sibling with same parent
-    previtem: i32,
+    previtem: Item,
 
     // one or multiple of UIlayoutFlags
     layout_flags: u32,
@@ -39,7 +49,7 @@ struct Item {
     // margin offsets, interpretation depends on flags
     margins: [i32, ..4],
     // neighbors to position borders to
-    relto: [i32, ..4],
+    relto: [Item, ..4],
 
     // computed size
     computed_size: Vec2,
@@ -56,17 +66,17 @@ struct Item {
     // a combination of Events
     event_flags: EventFlags,
 }
-impl Item {
-    fn new() -> Item {
-        let mut item: Item = unsafe { zeroed() };
-        item.parent = -1;
-        item.firstkid = -1;
-        item.lastkid = -1;
-        item.nextitem = -1;
-        item.previtem = -1;
+impl ItemImp {
+    fn new() -> ItemImp {
+        let mut item: ItemImp = unsafe { zeroed() };
+        item.parent = Item::none();
+        item.firstkid = Item::none();
+        item.lastkid = Item::none();
+        item.nextitem = Item::none();
+        item.previtem = Item::none();
         item.data = -1;
         for i in range(0u, 4u) {
-            item.relto[i] = -1;
+            item.relto[i] = Item::none();
         }
         item
     }
@@ -92,17 +102,31 @@ struct Context {
 
     hot_handle: Handle,
     active_handle: Handle,
-    hot_item: i32,
-    active_item: i32,
+    hot_item: Item,
+    active_item: Item,
     hot_rect: Rect,
     active_rect: Rect,
     state: State,
 
     count: i32,
-    items: [Item, ..MAX_ITEMS],
+    items: [ItemImp, ..MAX_ITEMS],
     datasize: i32,
     data: [u8, ..MAX_BUFFERSIZE],
 }
+
+impl<'a> Index<Item, ItemImp> for Context {
+    fn index<'a>(&'a self, index: &Item) -> &'a ItemImp {
+        assert!((index.handle >= 0) && (index.handle < self.count));
+        &self.items[index.handle as uint]
+    }
+}
+impl<'a> IndexMut<Item, ItemImp> for  Context {
+    fn index_mut<'a>(&'a mut self, index: &Item) -> &'a mut ItemImp {
+        assert!((index.handle >= 0) && (index.handle < self.count));
+        &mut self.items[index.handle as uint]
+    }
+}
+
 
 //INLINE
 pub fn ui_max(a: i32, b: i32) -> i32 { if a>b {a} else {b} }
@@ -133,14 +157,14 @@ impl Context {
 
             hot_handle: -1,
             active_handle: -1,
-            hot_item: -1,
-            active_item: -1,
+            hot_item: Item::none(),
+            active_item: Item::none(),
             hot_rect: Rect::zero(),
             active_rect: Rect::zero(),
             state: STATE_IDLE,
 
             count: 0,
-            items: [Item::new(), ..MAX_ITEMS as uint],
+            items: [ItemImp::new(), ..MAX_ITEMS as uint],
             datasize: 0,
             data: [0, ..MAX_BUFFERSIZE as uint],
         }
@@ -212,364 +236,383 @@ impl Context {
         }
     }
 
-    pub fn uiItemRef(&mut self, item: i32) -> &mut Item {
-        assert!((item >= 0) && (item < self.count));
-        let item = item as uint;
-        return &mut self.items[item];
+    fn root(&mut self) -> Item {
+        if self.count == 0 { return Item::none() }
+        Item::wrap(0)
+    }
+
+    fn get(&mut self, item: Item) -> &mut ItemImp {
+        //assert!((item.handle >= 0) && (item.handle < self.count));
+        //let item = item.handle as uint;
+        //return &mut self.items[item];
+        &mut (*self)[item]
     }
 
     pub fn uiClear(&mut self) {
         self.count = 0;
         self.datasize = 0;
-        self.hot_item = -1;
-        self.active_item = -1;
+        self.hot_item = Item::none();
+        self.active_item = Item::none();
     }
 
-    pub fn uiItem(&mut self) -> i32 {
+    pub fn uiItem(&mut self) -> Item {
         assert!((self.count as u32) < MAX_ITEMS);
         let idx = self.count;
                   self.count += 1;
-        let item = self.uiItemRef(idx);
+        let it = Item::wrap(idx);
+        let item = self.get(it);
         *item = unsafe { zeroed() };
-        item.parent = -1;
-        item.firstkid = -1;
-        item.lastkid = -1;
-        item.nextitem = -1;
-        item.previtem = -1;
+        item.parent = Item::none();
+        item.firstkid = Item::none();
+        item.lastkid = Item::none();
+        item.nextitem = Item::none();
+        item.previtem = Item::none();
         item.data = -1;
         for i in range(0u, 4u) {
-            item.relto[i] = -1;
+            item.relto[i] = Item::none();
         }
-        return idx;
+        return it;
     }
 
-    pub fn uiNotifyItem(&mut self, item: i32, event: EventFlags) {
-        let pitem = self.uiItemRef(item);
+    pub fn uiNotifyItem(&mut self, item: Item, event: EventFlags) {
+        let pitem = self.get(item);
         if pitem.handler.is_some() && pitem.event_flags.contains(event) {
-            (pitem.handler.unwrap())(item, event);
+            (pitem.handler.unwrap())(item.handle, event);
         }
     }
 
-    pub fn uiAppend(&mut self, item: i32, child: i32) -> i32 {
-        assert!(child > 0);
-        assert!(self.uiParent(child) == -1);
+    pub fn uiAppend(&mut self, item: Item, child: Item) -> Item {
+        assert!(child.valid());
+        assert!(self.uiParent(child).invalid());
         {
-//            let pchild = self.uiItemRef(child);
-//            let pparent = self.uiItemRef(item);
-//            pchild.parent = item;
-//            pchild.kidid = pparent.numkids;
-//                           pparent.numkids+= 1;
-//            if (pparent.lastkid < 0) {
-//                pparent.firstkid = child;
-//                pparent.lastkid = child;
-//            } else {
-//                pchild.previtem = pparent.lastkid;
-//                self.uiItemRef(pparent.lastkid).nextitem = child;
-//                pparent.lastkid = child;
-//            }
+            let (new_kid_id, lastkid) = {
+                let pparent = self.get(item);
+                let nkids = pparent.numkids;
+                pparent.numkids += 1;
+                (nkids, pparent.lastkid)
+            };
+            {
+                let pchild = self.get(child);
+                pchild.parent = item;
+                pchild.kidid = new_kid_id;
+            }
+            if lastkid.invalid() {
+                let pparent = self.get(item);
+                pparent.firstkid = child;
+                pparent.lastkid = child;
+            } else {
+                self.get(child).previtem = lastkid;
+                self.get(lastkid).nextitem = child;
+                self.get(item).lastkid = child;
+            }
         }
         self.uiNotifyItem(item, APPEND);
         return child;
     }
 
-    pub fn uiSetFrozen(&mut self, item: i32, enable: bool) {
-        let pitem = self.uiItemRef(item);
+    pub fn uiSetFrozen(&mut self, item: Item, enable: bool) {
+        let pitem = self.get(item);
         pitem.frozen = enable;
     }
 
-    pub fn uiSetSize(&mut self, item: i32, w: i32, h: i32) {
-        let pitem = self.uiItemRef(item);
+    pub fn uiSetSize(&mut self, item: Item, w: i32, h: i32) {
+        let pitem = self.get(item);
         pitem.size.x = w;
         pitem.size.y = h;
     }
 
-    pub fn uiGetWidth(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).size.x;
+    pub fn uiGetWidth(&mut self, item: Item) -> i32 {
+        return self.get(item).size.x;
     }
 
-    pub fn uiGetHeight(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).size.y;
+    pub fn uiGetHeight(&mut self, item: Item) -> i32 {
+        return self.get(item).size.y;
     }
 
-    pub fn uiSetLayout(&mut self, item: i32, flags: u32) {
-        self.uiItemRef(item).layout_flags = flags;
+    pub fn uiSetLayout(&mut self, item: Item, flags: u32) {
+        self.get(item).layout_flags = flags;
     }
 
-    pub fn uiGetLayout(&mut self, item: i32) -> u32 {
-        return self.uiItemRef(item).layout_flags;
+    pub fn uiGetLayout(&mut self, item: Item) -> u32 {
+        return self.get(item).layout_flags;
     }
 
-    pub fn uiSetMargins(&mut self, item: i32, l: i32, t: i32, r: i32, b: i32) {
-        let pitem = self.uiItemRef(item);
+    pub fn uiSetMargins(&mut self, item: Item, l: i32, t: i32, r: i32, b: i32) {
+        let pitem = self.get(item);
         pitem.margins[0] = l;
         pitem.margins[1] = t;
         pitem.margins[2] = r;
         pitem.margins[3] = b;
     }
 
-    pub fn uiGetMarginLeft(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).margins[0];
+    pub fn uiGetMarginLeft(&mut self, item: Item) -> i32 {
+        return self.get(item).margins[0];
     }
-    pub fn uiGetMarginTop(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).margins[1];
+    pub fn uiGetMarginTop(&mut self, item: Item) -> i32 {
+        return self.get(item).margins[1];
     }
-    pub fn uiGetMarginRight(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).margins[2];
+    pub fn uiGetMarginRight(&mut self, item: Item) -> i32 {
+        return self.get(item).margins[2];
     }
-    pub fn uiGetMarginDown(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).margins[3];
-    }
-
-
-    pub fn uiSetRelToLeft(&mut self, item: i32, other: i32) {
-        assert!((other < 0) || (self.uiParent(other) == self.uiParent(item)));
-        self.uiItemRef(item).relto[0] = other;
+    pub fn uiGetMarginDown(&mut self, item: Item) -> i32 {
+        return self.get(item).margins[3];
     }
 
-    pub fn uiGetRelToLeft(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).relto[0];
+
+    pub fn uiSetRelToLeft(&mut self, item: Item, other: Item) {
+        assert!(!other.valid() || (self.uiParent(other) == self.uiParent(item)));
+        self.get(item).relto[0] = other;
     }
 
-    pub fn uiSetRelToTop(&mut self, item: i32, other: i32) {
-        assert!((other < 0) || (self.uiParent(other) == self.uiParent(item)));
-        self.uiItemRef(item).relto[1] = other;
-    }
-    pub fn uiGetRelToTop(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).relto[1];
+    pub fn uiGetRelToLeft(&mut self, item: Item) -> Item {
+        return self.get(item).relto[0];
     }
 
-    pub fn uiSetRelToRight(&mut self, item: i32, other: i32) {
-        assert!((other < 0) || (self.uiParent(other) == self.uiParent(item)));
-        self.uiItemRef(item).relto[2] = other;
+    pub fn uiSetRelToTop(&mut self, item: Item, other: Item) {
+        assert!(!other.valid() || (self.uiParent(other) == self.uiParent(item)));
+        self.get(item).relto[1] = other;
     }
-    pub fn uiGetRelToRight(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).relto[2];
+    pub fn uiGetRelToTop(&mut self, item: Item) -> Item {
+        return self.get(item).relto[1];
     }
 
-    pub fn uiSetRelToDown(&mut self, item: i32, other: i32) {
-        assert!((other < 0) || (self.uiParent(other) == self.uiParent(item)));
-        self.uiItemRef(item).relto[3] = other;
+    pub fn uiSetRelToRight(&mut self, item: Item, other: Item) {
+        assert!(!other.valid() || (self.uiParent(other) == self.uiParent(item)));
+        self.get(item).relto[2] = other;
     }
-    pub fn uiGetRelToDown(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).relto[3];
+    pub fn uiGetRelToRight(&mut self, item: Item) -> Item {
+        return self.get(item).relto[2];
+    }
+
+    pub fn uiSetRelToDown(&mut self, item: Item, other: Item) {
+        assert!(!other.valid() || (self.uiParent(other) == self.uiParent(item)));
+        self.get(item).relto[3] = other;
+    }
+    pub fn uiGetRelToDown(&mut self, item: Item) -> Item {
+        return self.get(item).relto[3];
     }
 
 
     //INLINE
-    pub fn uiComputeChainSize<'a>(&'a mut self, pkid: &'a mut Item,
+    pub fn uiComputeChainSize(&mut self, item: Item,
         need_size: &mut i32, hard_size: &mut i32, dim: uint
     ) {
-//        let mut pitem = pkid;
-//        let wdim = dim+2;
-//        let mut size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
-//        *need_size = size;
-//        *hard_size = if pitem.size[dim] > 0 {size} else {0};
-//
-//        let mut it = 0u32;
-//        pitem.visited |= 1<<dim;
-//        // traverse along left neighbors
-//        while ((pitem.layout_flags>>dim) & LEFT.bits) != 0 {
-//            if (pitem.relto[dim] < 0) {break};
-//            pitem = self.uiItemRef(pitem.relto[dim]);
-//            pitem.visited |= 1<<dim;
-//            size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
-//            *need_size = (*need_size) + size;
-//            *hard_size = (*hard_size) + (if pitem.size[dim] > 0 {size} else {0});
-//            it += 1;
-//            assert!(it<1000000); // infinite loop
-//        }
-//        // traverse along right neighbors
-//        pitem = pkid;
-//        it = 0;
-//        while LayoutFlags::from_bits(pitem.layout_flags>>dim).expect("bitfail").contains(RIGHT) {
-//            if (pitem.relto[wdim] < 0) {break};
-//            pitem = self.uiItemRef(pitem.relto[wdim]);
-//            pitem.visited |= 1<<dim;
-//            size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
-//            *need_size = (*need_size) + size;
-//            *hard_size = (*hard_size) + (if pitem.size[dim] > 0 {size} else {0});
-//            it += 1;
-//            assert!(it<1000000); // infinite loop
-//        }
+        let wdim = dim+2;
+        let mut size = {
+            let pitem = self.get(item);
+            pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim]
+        };
+        *need_size = size;
+        *hard_size = if self.get(item).size[dim] > 0 {size} else {0};
+
+        self.get(item).visited |= 1<<dim;
+        // traverse along left neighbors
+        let mut iter = 0u;
+        while ((self.get(item).layout_flags>>dim) & LEFT.bits) != 0 {
+            let item = self.get(item).relto[dim];
+            if item.invalid() { break };
+            let pitem = self.get(item);
+            pitem.visited |= 1<<dim;
+            size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
+            *need_size = (*need_size) + size;
+            *hard_size = (*hard_size) + (if pitem.size[dim] > 0 {size} else {0});
+            iter += 1;
+            assert!(iter<1000000); // infinite loop
+        }
+        // traverse along right neighbors
+        iter = 0;
+        while ((self.get(item).layout_flags>>dim) & RIGHT.bits) != 0 {
+            let item = self.get(item).relto[wdim];
+            if item.invalid() { break };
+            let pitem = self.get(item);
+            pitem.visited |= 1<<dim;    // are we gettin our dim's and wdim's mixed up? idono
+            size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
+            *need_size = (*need_size) + size;
+            *hard_size = (*hard_size) + (if pitem.size[dim] > 0 {size} else {0});
+            iter += 1;
+            assert!(iter<1000000); // infinite loop
+        }
     }
 
     //INLINE
-    pub fn uiComputeSizeDim(&mut self, pitem: &mut Item, dim: uint) {
-//        let wdim = dim+2;
-//        let mut need_size = 0;
-//        let mut hard_size = 0;
-//        let kid = pitem.firstkid;
-//        while (kid >= 0) {
-//            let pkid = self.uiItemRef(kid);
-//            if pkid.visited & (1<<dim) == 0 {
-//                let mut ns: i32 = 0;
-//                let mut hs: i32 = 0;
-//                self.uiComputeChainSize(pkid, &mut ns, &mut hs, dim);
-//                need_size = ui_max(need_size, ns);
-//                hard_size = ui_max(hard_size, hs);
-//            }
-//            kid = self.uiNextSibling(kid);
-//        }
-//        pitem.computed_size[dim] = hard_size;
-//
-//        if (pitem.size[dim] > 0) {
-//            pitem.rect[wdim] = pitem.size[dim];
-//        } else {
-//            pitem.rect[wdim] = need_size;
-//        }
+    pub fn uiComputeSizeDim(&mut self, item: Item, dim: uint) {
+        let wdim = dim+2;
+        let mut need_size = 0;
+        let mut hard_size = 0;
+        let mut kid = self.get(item).firstkid;
+        while kid.valid() {
+            let visited = self.get(kid).visited;
+            if visited & (1<<dim) == 0 {
+                let mut ns: i32 = 0;
+                let mut hs: i32 = 0;
+                self.uiComputeChainSize(kid, &mut ns, &mut hs, dim);
+                need_size = ui_max(need_size, ns);
+                hard_size = ui_max(hard_size, hs);
+            }
+            kid = self.uiNextSibling(kid);
+        }
+        let pitem = self.get(item);
+        pitem.computed_size[dim] = hard_size;
+
+        if pitem.size[dim] > 0 {
+            pitem.rect[wdim] = pitem.size[dim];
+        } else {
+            pitem.rect[wdim] = need_size;
+        }
     }
 
     //static
-    pub fn uiComputeBestSize(&mut self, item: i32, dim: uint) {
-//        let pitem = self.uiItemRef(item);
-//        pitem.visited = 0;
-//        // children expand the size
-//        let mut kid = self.uiFirstChild(item);
-//        while (kid >= 0) {
-//            self.uiComputeBestSize(kid, dim);
-//            kid = self.uiNextSibling(kid);
-//        }
-//
-//        self.uiComputeSizeDim(pitem, dim);
+    pub fn uiComputeBestSize(&mut self, item: Item, dim: uint) {
+        self.get(item).visited = 0;
+        // children expand the size
+        let mut kid = self.uiFirstChild(item);
+        while kid.valid() {
+            self.uiComputeBestSize(kid, dim);
+            kid = self.uiNextSibling(kid);
+        }
+
+        self.uiComputeSizeDim(item, dim);
     }
 
     //static
-    pub fn uiLayoutChildItem(&mut self, pparent: &Item, pitem: &mut Item, dyncount: &mut i32, dim: uint) {
-//        if (pitem.visited & (4<<dim) != 0) {return};
-//        pitem.visited |= (4<<dim);
-//
-//        if (pitem.size[dim] == 0) {
-//            *dyncount = (*dyncount)+1;
-//        }
-//
-//        let wdim = dim+2;
-//
-//        let x = 0;
-//        let s = pparent.rect[wdim];
-//
-//        let flags = LayoutFlags::from_bits((pitem.layout_flags>>dim) as u32).expect("fail");
-//        let hasl = flags.contains(LEFT) && (pitem.relto[dim] >= 0);
-//        let hasr = flags.contains(RIGHT) && (pitem.relto[wdim] >= 0);
-//
-//        if (hasl) {
-//            let pl = self.uiItemRef(pitem.relto[dim]);
-//            self.uiLayoutChildItem(pparent, pl, dyncount, dim);
-//            x = pl.rect[dim]+pl.rect[wdim]+pl.margins[wdim];
-//            s -= x;
-//        }
-//        if (hasr) {
-//            let pl = self.uiItemRef(pitem.relto[wdim]);
-//            self.uiLayoutChildItem(pparent, pl, dyncount, dim);
-//            s = pl.rect[dim]-pl.margins[dim]-x;
-//        }
-//
-//        match flags & HFILL {
-//            LEFT => {
-//                pitem.rect[dim] = x+pitem.margins[dim];
-//            }
-//            RIGHT => {
-//                pitem.rect[dim] = x+s-pitem.rect[wdim]-pitem.margins[wdim];
-//            }
-//            HFILL => {
-//                if (pitem.size[dim] > 0) { // hard maximum size; can't stretch
-//                    if (!hasl) {
-//                        pitem.rect[dim] = x+pitem.margins[dim];
-//                    }
-//                    else {
-//                        pitem.rect[dim] = x+s-pitem.rect[wdim]-pitem.margins[wdim];
-//                    }
-//                } else {
-//                    if (true) { // !pitem.rect[wdim]) {
-//                        let width = (pparent.rect[wdim] - pparent.computed_size[dim]);
-//                        let space = width / (*dyncount);
-//                        //let rest = width - space*(*dyncount);
-//                        if (!hasl) {
-//                            pitem.rect[dim] = x+pitem.margins[dim];
-//                            pitem.rect[wdim] = s-pitem.margins[dim]-pitem.margins[wdim];
-//                        } else {
-//                            pitem.rect[wdim] = space-pitem.margins[dim]-pitem.margins[wdim];
-//                            pitem.rect[dim] = x+s-pitem.rect[wdim]-pitem.margins[wdim];
-//                        }
-//                    } else {
-//                        pitem.rect[dim] = x+pitem.margins[dim];
-//                        pitem.rect[wdim] = s-pitem.margins[dim]-pitem.margins[wdim];
-//                    }
-//                }
-//            }
-//            //default:
-//            _ /*HCENTER*/ => {
-//                pitem.rect[dim] = x+(s-pitem.rect[wdim])/2+pitem.margins[dim];
-//            }
-//        }
+    pub fn uiLayoutChildItem(&mut self, parent: Item, item: Item, dyncount: &mut i32, dim: uint) {
+        //let pitem = self.get(item);
+
+        if (*self)[item].visited & (4<<dim) != 0 {return};
+        (*self)[item].visited |= 4<<dim;
+
+        if (*self)[item].size[dim] == 0 {
+            *dyncount = (*dyncount)+1;
+        }
+
+        let wdim = dim+2;
+
+        let mut x = 0;
+        let mut s = self.get(parent).rect[wdim];
+
+        let flags = (*self)[item].layout_flags>>dim;
+        let flags = LayoutFlags::from_bits(flags).expect("bitfail");
+        let hasl = flags.contains(LEFT) && (*self)[item].relto[dim].valid();
+        let hasr = flags.contains(RIGHT) && (*self)[item].relto[wdim].valid();
+
+        if hasl {
+            let l = (*self)[item].relto[dim];
+            self.uiLayoutChildItem(parent, l, dyncount, dim);
+            let pl = self.get(l);
+            x = pl.rect[dim]+pl.rect[wdim]+pl.margins[wdim];
+            s -= x;
+        }
+        if hasr {
+            let r = (*self)[item].relto[wdim];
+            self.uiLayoutChildItem(parent, r, dyncount, dim);
+            let pr = self.get(r);
+            s = pr.rect[dim]-pr.margins[dim]-x;
+        }
+
+        match flags & HFILL {
+            LEFT => {
+                (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+            }
+            RIGHT => {
+                (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+            }
+            HFILL => {
+                if (*self)[item].size[dim] > 0 { // hard maximum size; can't stretch
+                    if !hasl {
+                        (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+                    }
+                    else {
+                        (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+                    }
+                } else {
+                    if true { // !(*self)[item].rect[wdim]) {
+                        let width = (*self)[parent].rect[wdim] - (*self)[parent].computed_size[dim];
+                        let space = width / (*dyncount);
+                        //let rest = width - space*(*dyncount);
+                        if !hasl {
+                            (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+                            (*self)[item].rect[wdim] = s-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
+                        } else {
+                            (*self)[item].rect[wdim] = space-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
+                            (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+                        }
+                    } else {
+                        (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+                        (*self)[item].rect[wdim] = s-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
+                    }
+                }
+            }
+            //default:
+            _ /*HCENTER*/ => {
+                (*self)[item].rect[dim] = x+(s-(*self)[item].rect[wdim])/2+(*self)[item].margins[dim];
+            }
+        }
     }
 
     //INLINE
-    pub fn uiLayoutItemDim(&mut self, pitem: &mut Item, dim: uint) {
-//        let mut kid = pitem.firstkid;
-//        while (kid >= 0) {
-//            let pkid = self.uiItemRef(kid);
-//            let mut dyncount = 0;
-//            self.uiLayoutChildItem(pitem, pkid, &dyncount, dim);
-//            kid = self.uiNextSibling(kid);
-//        }
+    pub fn uiLayoutItemDim(&mut self, item: Item, dim: uint) {
+        let mut kid = self.get(item).firstkid;
+        while kid.valid() {
+            //let pkid = self.get(kid);
+            let mut dyncount = 0;
+            self.uiLayoutChildItem(item, kid, &mut dyncount, dim);
+            kid = self.uiNextSibling(kid);
+        }
     }
 
     //static
-    pub fn uiLayoutItem(&mut self, item: i32, dim: uint) {
-//        let pitem = self.uiItemRef(item);
-//
-//        self.uiLayoutItemDim(pitem, dim);
-//
-//        let mut kid = self.uiFirstChild(item);
-//        while (kid >= 0) {
-//            self.uiLayoutItem(kid, dim);
-//            kid = self.uiNextSibling(kid);
-//        }
+    pub fn uiLayoutItem(&mut self, item: Item, dim: uint) {
+        self.uiLayoutItemDim(item, dim);
+        let mut kid = self.uiFirstChild(item);
+        while kid.valid() {
+            self.uiLayoutItem(kid, dim);
+            kid = self.uiNextSibling(kid);
+        }
     }
 
-    pub fn uiGetRect(&mut self, item: i32) -> Rect {
-        return self.uiItemRef(item).rect;
+    pub fn uiGetRect(&mut self, item: Item) -> Rect {
+        return self.get(item).rect;
     }
 
     pub fn uiGetActiveRect(&self) -> Rect {
         return self.active_rect;
     }
 
-    pub fn uiFirstChild(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).firstkid;
+    pub fn uiFirstChild(&mut self, item: Item) -> Item {
+        return self.get(item).firstkid;
     }
 
-    pub fn uiLastChild(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).lastkid;
+    pub fn uiLastChild(&mut self, item: Item) -> Item {
+        return self.get(item).lastkid;
     }
 
-    pub fn uiNextSibling(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).nextitem;
+    pub fn uiNextSibling(&mut self, item: Item) -> Item {
+        return self.get(item).nextitem;
     }
 
-    pub fn uiPrevSibling(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).previtem;
+    pub fn uiPrevSibling(&mut self, item: Item) -> Item {
+        return self.get(item).previtem;
     }
 
-    pub fn uiParent(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).parent;
+    pub fn uiParent(&mut self, item: Item) -> Item {
+        return self.get(item).parent;
     }
 
-    pub fn uiGetData(&mut self, item: i32) -> &mut [u8] {
+    pub fn uiGetData(&mut self, item: Item) -> &mut [u8] {
         let (data, datasize) = {
-            let pitem = self.uiItemRef(item);
+            let pitem = self.get(item);
             (pitem.data, pitem.datasize)
         };
 //        if (pitem.data < 0) {return NODATA;}
         return self.data.mut_slice(data as uint, datasize as uint);
     }
 
-    pub fn uiAllocData(&mut self, item: i32, size: i32) -> &[u8] {
+    pub fn uiAllocData(&mut self, item: Item, size: i32) -> &[u8] {
         assert!((size > 0) && ((size as uint) < (MAX_DATASIZE as uint)));
         let alloc = self.datasize;
         self.datasize += size;
         {
-            let pitem = self.uiItemRef(item);
+            let pitem = self.get(item);
             assert!(pitem.data < 0);
             assert!((alloc+size) as uint <= MAX_BUFFERSIZE as uint);
             pitem.data = alloc;
@@ -577,8 +620,8 @@ impl Context {
         return self.data.slice(alloc as uint, size as uint);
     }
 
-    pub fn uiSetHandle(&mut self, item: i32, handle: Handle) {
-        self.uiItemRef(item).handle = handle;
+    pub fn uiSetHandle(&mut self, item: Item, handle: Handle) {
+        self.get(item).handle = handle;
         if handle != -1 {
             if handle == self.hot_handle {
                 self.hot_item = item;
@@ -589,79 +632,83 @@ impl Context {
         }
     }
 
-    pub fn uiGetHandle(&mut self, item: i32) -> Handle {
-        return self.uiItemRef(item).handle;
+    pub fn uiGetHandle(&mut self, item: Item) -> Handle {
+        return self.get(item).handle;
     }
 
-    pub fn uiSetHandler(&mut self, item: i32, handler: Handler, flags: EventFlags) {
-        let pitem =self. uiItemRef(item);
+    pub fn uiSetHandler(&mut self, item: Item, handler: Handler, flags: EventFlags) {
+        let pitem =self. get(item);
         pitem.handler = handler;
         pitem.event_flags = flags;
     }
 
-    pub fn uiGetHandler(&mut self, item: i32) -> Handler {
-        return self.uiItemRef(item).handler;
+    pub fn uiGetHandler(&mut self, item: Item) -> Handler {
+        return self.get(item).handler;
     }
 
-    pub fn uiGetHandlerFlags(&mut self, item: i32) -> EventFlags {
-        return self.uiItemRef(item).event_flags;
+    pub fn uiGetHandlerFlags(&mut self, item: Item) -> EventFlags {
+        return self.get(item).event_flags;
     }
 
-    pub fn uiGetChildId(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).kidid;
+    pub fn uiGetChildId(&mut self, item: Item) -> i32 {
+        return self.get(item).kidid;
     }
 
-    pub fn uiGetChildCount(&mut self, item: i32) -> i32 {
-        return self.uiItemRef(item).numkids;
+    pub fn uiGetChildCount(&mut self, item: Item) -> i32 {
+        return self.get(item).numkids;
     }
 
-    pub fn uiFindItem(&mut self, item: i32, x: i32, y: i32, ox: i32, oy: i32) -> i32 {
-//        let mut pitem = self.uiItemRef(item);
-//        if (pitem.frozen) {return -1;}
-//        let mut rect = pitem.rect;
-//        let x = x - rect.x;
-//        let y = y - rect.y;
-//        let ox = ox + rect.x;
-//        let oy = oy + rect.y;
-//        if ((x>=0)
-//         && (y>=0)
-//         && (x<rect.w)
-//         && (y<rect.h)) {
-//            let kid = self.uiFirstChild(item);
-//            while (kid >= 0) {
-//                let best_hit = self.uiFindItem(kid,x,y,ox,oy);
-//                if (best_hit >= 0) {return best_hit;}
-//                kid = self.uiNextSibling(kid);
-//            }
-//            rect.x += ox;
-//            rect.y += oy;
-//            self.hot_rect = rect;
-//            return item;
-//        }
-        return -1;
+    pub fn uiFindItem(&mut self, item: Item, x: i32, y: i32, ox: i32, oy: i32) -> Item {
+        let mut rect = {
+            let pitem = self.get(item);
+            if pitem.frozen { return Item::none(); }
+            pitem.rect
+        };
+        let x = x - rect.x;
+        let y = y - rect.y;
+        let ox = ox + rect.x;
+        let oy = oy + rect.y;
+        if (x>=0)
+        && (y>=0)
+        && (x<rect.w)
+        && (y<rect.h) {
+            let mut kid = self.uiFirstChild(item);
+            while kid.valid() {
+                let best_hit = self.uiFindItem(kid,x,y,ox,oy);
+                if best_hit.valid() { return best_hit; }
+                kid = self.uiNextSibling(kid);
+            }
+            rect.x += ox;
+            rect.y += oy;
+            self.hot_rect = rect;
+            return item;
+        }
+        return Item::none();
     }
 
     pub fn uiLayout(&mut self) {
         if self.count == 0 { return; }
+        let root = self.root();
 
         // compute widths
-        self.uiComputeBestSize(0,0);
+        self.uiComputeBestSize(root,0);
         // position root element rect
-        self.uiItemRef(0).rect.x = self.uiItemRef(0).margins[0];
-        self.uiLayoutItem(0,0);
+        self.get(root).rect.x = self.get(root).margins[0];
+        self.uiLayoutItem(root,0);
 
         // compute heights
-        self.uiComputeBestSize(0,1);
+        self.uiComputeBestSize(root,1);
         // position root element rect
-        self.uiItemRef(0).rect.y = self.uiItemRef(0).margins[1];
-        self.uiLayoutItem(0,1);
+        self.get(root).rect.y = self.get(root).margins[1];
+        self.uiLayoutItem(root,1);
     }
 
     pub fn uiProcess(&mut self) {
         if self.count == 0 { return; }
 
         let cursor = self.cursor;
-        let hot = self.uiFindItem(0, cursor.x, cursor.y, 0, 0);
+        let root = self.root();
+        let hot = self.uiFindItem(root, cursor.x, cursor.y, 0, 0);
         let active = self.active_item;
 
         match self.state {
@@ -669,10 +716,10 @@ impl Context {
             STATE_IDLE => {
                 self.start_cursor = cursor;
                 if self.uiGetButton(0) {
-                    self.hot_item = -1;
+                    self.hot_item = Item::none();
                     self.active_rect = self.hot_rect;
                     self.active_item = hot;
-                    if hot >= 0 {
+                    if hot.valid() {
                         self.uiNotifyItem(hot, BUTTON0_DOWN);
                     }
                     self.state = STATE_CAPTURE;
@@ -682,23 +729,23 @@ impl Context {
             }
             STATE_CAPTURE => {
                 if !self.uiGetButton(0) {
-                    if active >= 0 {
+                    if active.valid() {
                         self.uiNotifyItem(active, BUTTON0_UP);
                         if active == hot {
                             self.uiNotifyItem(active, BUTTON0_HOT_UP);
                         }
                     }
-                    self.active_item = -1;
+                    self.active_item = Item::none();
                     self.state = STATE_IDLE;
                 } else {
-                    if active >= 0 {
+                    if active.valid() {
                         self.uiNotifyItem(active, BUTTON0_CAPTURE);
                     }
                     if hot == active {
                         self.hot_item = hot;
                     }
                     else {
-                        self.hot_item = -1;
+                        self.hot_item = Item::none();
                     }
                 }
             }
@@ -707,24 +754,24 @@ impl Context {
         self.last_cursor = self.cursor;
         let active = self.active_item;
         let hot = self.hot_item;
-        self.hot_handle = if hot>=0 {self.uiGetHandle(hot)} else {0};
-        self.active_handle = if active>=0 {self.uiGetHandle(active)} else {0};
+        self.hot_handle = if hot.valid() {self.uiGetHandle(hot)} else {0};
+        self.active_handle = if active.valid() {self.uiGetHandle(active)} else {0};
     }
 
     //static
-    pub fn uiIsActive(&self, item: i32) -> bool {
+    pub fn uiIsActive(&self, item: Item) -> bool {
         return self.active_item == item;
     }
 
     //static
-    pub fn uiIsHot(&self, item: i32) -> bool {
+    pub fn uiIsHot(&self, item: Item) -> bool {
         return self.hot_item == item;
     }
 
-    pub fn uiGetState(&mut self, item: i32) -> ItemState {
+    pub fn uiGetState(&mut self, item: Item) -> ItemState {
         let hot = self.uiIsHot(item);
         let active = self.uiIsActive(item);
-        let pitem = self.uiItemRef(item);
+        let pitem = self.get(item);
         if pitem.frozen {return FROZEN;}
         if active {
             if pitem.event_flags.contains(BUTTON0_CAPTURE|BUTTON0_UP) {return ACTIVE;}

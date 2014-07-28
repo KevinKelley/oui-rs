@@ -6,9 +6,6 @@
 
 extern crate libc;
 
-use std::mem::transmute;
-
-//pub type UIuint = u32;
 pub type Handle = u64;
 
 mod ffi;
@@ -100,7 +97,7 @@ pub struct Vec2 {
 }
 impl Vec2 {
     pub fn zero() -> Vec2 { Vec2 { x: 0, y: 0 } }
-    pub fn as_mut_slice(&mut self) -> &mut [i32, ..2u] { unsafe { transmute(self) } }
+    pub fn as_mut_slice(&mut self) -> &mut [i32, ..2u] { unsafe { std::mem::transmute(self) } }
 }
 impl<'a> Index<uint, i32> for Vec2 {
     fn index<'a>(&'a self, index: &uint) -> &'a i32 {
@@ -130,7 +127,7 @@ pub struct Rect {
 }
 impl Rect {
     pub fn zero() -> Rect { Rect { x:0, y:0, w:0, h:0 } }
-    pub fn as_mut_slice(&mut self) -> &mut [i32, ..4u] { unsafe { transmute(self) } }
+    pub fn as_mut_slice(&mut self) -> &mut [i32, ..4u] { unsafe { std::mem::transmute(self) } }
 }
 impl<'a> Index<uint, i32> for Rect {
     fn index<'a>(&'a self, index: &uint) -> &'a i32 {
