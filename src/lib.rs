@@ -9,7 +9,7 @@ extern crate libc;
 pub type Handle = u64;
 
 mod ffi;
-mod oui;
+pub mod oui;
 
 // maximum number of items that may be added
 pub static MAX_ITEMS:u32 = ffi::UI_MAX_ITEMS;
@@ -22,7 +22,8 @@ pub static MAX_DATASIZE:u32 = ffi::UI_MAX_DATASIZE;
 pub static MAX_DEPTH:u32 = ffi::UI_MAX_DEPTH;
 
 
-
+pub type Item = oui::Item;
+pub type Context = oui::Context;
 
 #[repr(u32)]
 pub enum ItemState {

@@ -1,0 +1,46 @@
+[package]
+
+name = "oui-pistonic"
+version = "0.1.0"
+authors = ["Kevin Kelley <kevin@kelleysoft.com>"]
+tags = []
+
+[[bin]]
+
+name = "oui-pistonic"
+path = "src/main.rs"
+
+
+[dependencies.oui]
+path = "../.."
+#git = "https://github.com/KevinKelley/oui-rs"
+
+[dependencies.blendish]
+path = "../../../blendish-rs"
+#git = "https://github.com/KevinKelley/blendish-rs"
+
+[dependencies.nanovg]
+#path = "../../../nanovg-rs"
+git = "https://github.com/KevinKelley/nanovg-rs"
+
+
+[dependencies.glfw]
+git = "https://github.com/bjz/glfw-rs"
+
+[dependencies.gl]
+git = "https://github.com/bjz/gl-rs"
+
+
+[dependencies.piston]
+# path = "../piston"
+git = "https://github.com/PistonDevelopers/piston"
+
+[dependencies.graphics]
+# path = "../rust-graphics"
+git = "https://github.com/pistondevelopers/rust-graphics"
+
+[dependencies.glfw_game_window]
+# path = "../glfw_game_window"
+git = "https://github.com/PistonDevelopers/glfw_game_window"
+
+
