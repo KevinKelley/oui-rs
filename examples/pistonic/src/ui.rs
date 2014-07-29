@@ -11,11 +11,11 @@ use blendish::lowlevel_draw::LowLevelDraw;
 use oui::*;
 use oui::{LEFT};
 
-
 // FIXME need Some<iconid> apparently (seems to use -1 for no-icon)
 fn icon_id(x:u8, y:u8) -> i32 { ICONID(x,y) as i32 }
 fn no_icon() -> i32 { -1 }
-
+//struct IconID(i32);
+// let iconid = IconID(icon_id(x,y)); let IconID(id) = iconid;
 ////////////////////////////////////////////////////////////////////////////////
 
 enum SubType {
@@ -28,13 +28,22 @@ enum SubType {
     ST_CHECK = 6,
     ST_PANEL = 7,
 }
-
 struct UIData { subtype: SubType }
 struct UIButtonData<'a> { head: UIData, iconid: i32, label: &'a str, }
 struct UICheckData<'a>  { head: UIData, label: &'a str, option: &'a mut bool, }
 struct UIRadioData<'a>  { head: UIData, iconid: i32, label: &'a str, value: &'a mut i32, }
 struct UISliderData<'a> { head: UIData, label: &'a str, progress: &'a mut f32, }
 
+pub enum Widget {
+    Label { text:String },
+    Button { iconid:i32, text:String },
+    Check { text:String, option:bool },
+    Radio { iconid:i32, text:String, value:i32 },
+    Slider { text:String, progress:f32 },
+    Column { unused:i32 },
+    Row { unused:i32 },
+    Panel { unused: i32 }
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 //void init(vg: nanovg::Ctx) {
@@ -45,7 +54,7 @@ struct UISliderData<'a> { head: UIData, label: &'a str, progress: &'a mut f32, }
 // calculate which corners are sharp for an item, depending on whether
 // the container the item is in has negative spacing, and the item
 // is first or last element in a sequence of 2 or more elements.
-fn corner_flags(ui: &mut Context, item: Item) -> CornerFlags {
+fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
     let parent = ui.parent(item);
     let numkids = ui.get_child_count(parent);
     if numkids < 2 {return CORNER_NONE;}
@@ -75,14 +84,15 @@ fn corner_flags(ui: &mut Context, item: Item) -> CornerFlags {
     return CORNER_NONE;
 }
 
-fn draw_ui(vg: &mut Ctx, item: Item, x: i32, y: i32) {
+// draw item and recurse for its children
+fn draw_ui(ui: &mut Context<Widget>, nvg: &mut Ctx, item: Item, x: i32, y: i32) {
 //    let head = (const UIData *)ui.get_data(item);
-//    let rect = ui.get_rect(item);
-//    rect.x += x;
-//    rect.y += y;
-//    if (ui.get_state(item) == FROZEN) {
-//        nvgGlobalAlpha(vg, DISABLED_ALPHA);
-//    }
+    let mut rect = ui.get_rect(item);
+    rect.x += x;
+    rect.y += y;
+    if ui.get_state(item) == FROZEN {
+        nvg.global_alpha(DISABLED_ALPHA);
+    }
 //    if (head) {
 //        switch(head.subtype) {
 //            default: {
@@ -133,18 +143,18 @@ fn draw_ui(vg: &mut Ctx, item: Item, x: i32, y: i32) {
 //    } else {
 //        testrect(vg,rect);
 //    }
-//
-//    i32 kid = ui.first_child(item);
-//    while (kid > 0) {
-//        draw_ui(vg, kid, rect.x, rect.y);
-//        kid = ui.next_sibling(kid);
-//    }
-//    if (ui.get_state(item) == FROZEN) {
-//        nvgGlobalAlpha(vg, 1.0);
-//    }
+
+    let mut kid = ui.first_child(item);
+    while kid.valid() { // was, > 0 meaning valid and not root ?
+        draw_ui(ui, nvg, kid, rect.x, rect.y);
+        kid = ui.next_sibling(kid);
+    }
+    if ui.get_state(item) == FROZEN {
+        nvg.global_alpha(1.0);  // was frozen, restore full alpha
+    }
 }
 
-fn label(ui:&mut Context, parent: Item, iconid: i32, label: &str) -> Item {
+fn label(ui:&mut Context<Widget>, parent: Item, iconid: i32, label: &str) -> Item {
     let item = ui.item();
     ui.set_size(item, 0, WIDGET_HEIGHT);
 //    {
@@ -161,10 +171,10 @@ fn label(ui:&mut Context, parent: Item, iconid: i32, label: &str) -> Item {
 
 fn demohandler(item: Item, event: EventFlags) {
 //    let data = (const UIButtonData *)ui.get_data(item);
-//    pri32f("clicked: %lld %s\n", ui.get_handle(item), data.label);
+//    printf("clicked: %lld %s\n", ui.get_handle(item), data.label);
 }
 
-fn button(ui:&mut Context, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler) -> Item {
+fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler) -> Item {
     // create new ui item
     let item = ui.item();
     // set persistent handle for item that is used
@@ -192,7 +202,7 @@ fn checkhandler(item: Item, event: EventFlags) {
 //    *data.option = !(*data.option);
 }
 
-fn check(ui:&mut Context, parent: Item, handle: Handle, label: &str, option: &mut bool) -> Item {
+fn check(ui:&mut Context<Widget>, parent: Item, handle: Handle, label: &str, option: &mut bool) -> Item {
     // create new ui item
     let item = ui.item();
     // set persistent handle for item that is used
@@ -247,7 +257,7 @@ fn sliderhandler(item: Item, event: EventFlags) {
 //    }
 }
 
-fn slider(ui:&mut Context, parent: Item, handle: Handle, label: &str, progress: &mut f32) -> Item {
+fn slider(ui:&mut Context<Widget>, parent: Item, handle: Handle, label: &str, progress: &mut f32) -> Item {
     // create new ui item
     let item = ui.item();
     // set persistent handle for item that is used
@@ -278,7 +288,7 @@ fn radiohandler(item: Item, event: EventFlags) {
 //    *data.value = ui.get_child_id(item);
 }
 
-fn radio(ui:&mut Context, parent: Item, handle: Handle, iconid: i32, label: &str, value: &mut i32) -> Item {
+fn radio(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, value: &mut i32) -> Item {
     let item = ui.item();
     ui.set_handle(item, handle);
     let w = if label.len() > 0 { TOOL_WIDTH } else { 0 };
@@ -298,7 +308,7 @@ fn radio(ui:&mut Context, parent: Item, handle: Handle, iconid: i32, label: &str
 }
 
 
-fn panel(ui:&mut Context) -> Item {
+fn panel(ui:&mut Context<Widget>) -> Item {
     let item = ui.item();
     let data = ui.alloc_data(item, size_of::<UIData>());
         let mut data: UIData = unsafe { transmute(*data.as_mut_ptr()) };
@@ -317,7 +327,7 @@ fn columnhandler(parent: Item, event: EventFlags) {
 //    ui.set_margins(item, 0, (last < 0)?0:1, 0, 0);
 }
 
-fn column(ui:&mut Context, parent: Item) -> Item {
+fn column(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item();
     ui.set_handler(item, Some(columnhandler), APPEND);
     ui.append(parent, item);
@@ -334,7 +344,7 @@ fn rowhandler(parent: Item, event: EventFlags) {
 //    ui.set_margins(item, (last < 0)?0:8, 0, 0, 0);
 }
 
-fn row(ui: &mut Context, parent: Item) -> Item {
+fn row(ui: &mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item();
     ui.set_handler(item, Some(rowhandler), APPEND);
     ui.append(parent, item);
@@ -352,7 +362,7 @@ fn vgrouphandler(parent: Item, event: EventFlags) {
 //    ui.set_margins(item, 0, (last < 0)?0:-2, 0, 0);
 }
 
-fn vgroup(ui:&mut Context, parent: Item) -> Item {
+fn vgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item();
     {
         let data = ui.alloc_data(item, size_of::<UIData>());
@@ -374,10 +384,10 @@ fn hgrouphandler(parent: Item, event: EventFlags) {
 //    ui.set_margins(item, (last < 0)?0:-1, 0, 0, 0);
 }
 
-fn hgroup(ui:&mut Context, parent: Item) -> Item {
+fn hgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item();
     {
-        let mut data = ui.alloc_data(item, size_of::<UIData>());
+        let data = ui.alloc_data(item, size_of::<UIData>());
         let mut data: UIData = unsafe { transmute(*data.as_mut_ptr()) };
         data.subtype = ST_ROW;
     }
@@ -387,7 +397,7 @@ fn hgroup(ui:&mut Context, parent: Item) -> Item {
 }
 
 
-pub fn draw(ui: &mut Context, ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
+pub fn draw(ui: &mut Context<Widget>, ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
 {
     // some OUI stuff
 
@@ -451,6 +461,6 @@ pub fn draw(ui: &mut Context, ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
         check(ui, col, 14, "Item 8", &mut option3);
     }
     ui.layout();
-    draw_ui(ctx.nvg(), root, 0, 0);
+    draw_ui(ui, ctx.nvg(), root, 0, 0);
     ui.process();
 }

@@ -23,8 +23,9 @@ pub static MAX_DEPTH:u32 = ffi::UI_MAX_DEPTH;
 
 
 pub type Item = oui::Item;
-pub type Context = oui::Context;
+pub type Context<Wgt> = oui::Context<Wgt>;
 
+#[deriving(Eq,PartialEq, Show)]
 #[repr(u32)]
 pub enum ItemState {
     // the item is inactive

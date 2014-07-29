@@ -5,15 +5,15 @@ use std::mem::{zeroed};
 
 #[deriving(Eq, PartialEq, Clone)]
 pub struct Item {
-    handle: i32
+    itemid: i32
 }
 impl Item {
-    fn wrap(handle: i32) -> Item { Item { handle: handle } }
-    fn none() -> Item { Item::wrap(-1) }
-    fn valid(&self) -> bool { self.handle != -1 }
-    fn invalid(&self) -> bool { !self.valid() }
+    fn wrap(itemid: i32) -> Item { Item { itemid: itemid } }
+    pub fn none() -> Item { Item::wrap(-1) }
+    pub fn valid(&self) -> bool { self.itemid != -1 }
+    pub fn invalid(&self) -> bool { !self.valid() }
 }
-pub struct ItemImp {
+pub struct ItemImp<Wgt> {
     // declaration independent unique handle (for persistence)
     handle: Handle,
 
@@ -66,9 +66,9 @@ pub struct ItemImp {
     // a combination of Events
     event_flags: EventFlags,
 }
-impl ItemImp {
-    fn new() -> ItemImp {
-        let mut item: ItemImp = unsafe { zeroed() };
+impl<Wgt> ItemImp<Wgt> {
+    fn new() -> ItemImp<Wgt> {
+        let mut item: ItemImp<Wgt> = unsafe { zeroed() };
         item.parent = Item::none();
         item.firstkid = Item::none();
         item.lastkid = Item::none();
@@ -87,7 +87,7 @@ enum State {
     STATE_CAPTURE,
 }
 
-pub struct Context {
+pub struct Context<Wgt> {
     // button state in this frame
     buttons: u64,
     // button state in the previous frame
@@ -109,21 +109,21 @@ pub struct Context {
     state: State,
 
     count: i32,
-    items: [ItemImp, ..MAX_ITEMS],
+    items: [ItemImp<Wgt>, ..MAX_ITEMS],
     datasize: uint,
     data: [u8, ..MAX_BUFFERSIZE],
 }
 
-impl<'a> Index<Item, ItemImp> for Context {
-    fn index<'a>(&'a self, index: &Item) -> &'a ItemImp {
-        assert!((index.handle >= 0) && (index.handle < self.count));
-        &self.items[index.handle as uint]
+impl<'a, Wgt> Index<Item, ItemImp<Wgt>> for Context<Wgt> {
+    fn index<'a>(&'a self, index: &Item) -> &'a ItemImp<Wgt> {
+        assert!((index.itemid >= 0) && (index.itemid < self.count));
+        &self.items[index.itemid as uint]
     }
 }
-impl<'a> IndexMut<Item, ItemImp> for  Context {
-    fn index_mut<'a>(&'a mut self, index: &Item) -> &'a mut ItemImp {
-        assert!((index.handle >= 0) && (index.handle < self.count));
-        &mut self.items[index.handle as uint]
+impl<'a, Wgt> IndexMut<Item, ItemImp<Wgt>> for  Context<Wgt> {
+    fn index_mut<'a>(&'a mut self, index: &Item) -> &'a mut ItemImp<Wgt> {
+        assert!((index.itemid >= 0) && (index.itemid < self.count));
+        &mut self.items[index.itemid as uint]
     }
 }
 
@@ -136,9 +136,9 @@ pub fn min(a: i32, b: i32) -> i32 { if a<b {a} else {b} }
 
 //static context: *mut Context = create_context();
 
-impl Context {
+impl<Wgt> Context<Wgt> {
 
-    pub fn create_context() -> Context {
+    pub fn create_context() -> Context<Wgt> {
         //Context *ctx = (Context *)malloc(sizeof(Context));
         //memset(ctx, 0, sizeof(Context));
         //return ctx;
@@ -241,9 +241,9 @@ impl Context {
         Item::wrap(0)
     }
 
-    fn get(&mut self, item: Item) -> &mut ItemImp {
-        //assert!((item.handle >= 0) && (item.handle < self.count));
-        //let item = item.handle as uint;
+    fn get(&mut self, item: Item) -> &mut ItemImp<Wgt> {
+        //assert!((item.itemid >= 0) && (item.itemid < self.count));
+        //let item = item.itemid as uint;
         //return &mut self.items[item];
         &mut (*self)[item]
     }
@@ -617,7 +617,7 @@ impl Context {
             assert!((alloc+size) as uint <= MAX_BUFFERSIZE as uint);
             pitem.data = alloc as int;
         }
-        return self.data.mut_slice(alloc as uint, size as uint);
+        return self.data.mut_slice(alloc as uint, (alloc+size) as uint);
     }
 
     pub fn set_handle(&mut self, item: Item, handle: Handle) {

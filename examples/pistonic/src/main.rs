@@ -1,4 +1,5 @@
 #![feature(globs)]
+#![feature(struct_variant)]
 #![allow(unused_imports)]
 #![allow(unused_variable)]
 #![allow(dead_code)]
@@ -25,7 +26,8 @@ use blendish::*;
 use blendish::lowlevel_draw::LowLevelDraw;
 use blendish::themed_draw::ThemedDraw;
 use resources::Resources;
-pub use oui::Context;
+pub use oui::oui::Context;
+pub use ui::Widget;
 pub use oui::oui::*;
 
 mod ui;
@@ -50,7 +52,7 @@ pub struct App<'a> {
     //resources: Resources,
     mouse: (i32,i32),           // current mouse pos
     elapsed_time: f64,          // seconds since app start
-    oui: Context,
+    oui: Context<Widget>,
     themed: ThemedContext<'a>   // wrap nvg ctx w/ themed-draw fns
 }
 
