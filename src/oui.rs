@@ -41,7 +41,7 @@ pub struct ItemImp {
     previtem: Item,
 
     // one or multiple of UIlayoutFlags
-    layout_flags: u32,
+    layout_flags: LayoutFlags,
     // size
     size: Vec2,
     // visited flags for layouting
@@ -60,9 +60,9 @@ pub struct ItemImp {
 
     frozen: bool,
     // index of data or -1 for none
-    data: i32,
+    data: int,  // Option<uint>,
     // size of data
-    datasize: i32,
+    datasize: uint,
     // a combination of Events
     event_flags: EventFlags,
 }
@@ -110,7 +110,7 @@ pub struct Context {
 
     count: i32,
     items: [ItemImp, ..MAX_ITEMS],
-    datasize: i32,
+    datasize: uint,
     data: [u8, ..MAX_BUFFERSIZE],
 }
 
@@ -165,7 +165,7 @@ impl Context {
 
             count: 0,
             items: [ItemImp::new(), ..MAX_ITEMS as uint],
-            datasize: 0,
+            datasize: 0u,
             data: [0, ..MAX_BUFFERSIZE as uint],
         }
     }
@@ -250,7 +250,7 @@ impl Context {
 
     pub fn clear(&mut self) {
         self.count = 0;
-        self.datasize = 0;
+        self.datasize = 0u;
         self.hot_item = Item::none();
         self.active_item = Item::none();
     }
@@ -277,7 +277,7 @@ impl Context {
     pub fn notify_item(&mut self, item: Item, event: EventFlags) {
         let pitem = self.get(item);
         if pitem.handler.is_some() && pitem.event_flags.contains(event) {
-            (pitem.handler.unwrap())(item.handle, event);
+            (pitem.handler.unwrap())(item, event);
         }
     }
 
@@ -314,25 +314,25 @@ impl Context {
         self.get(item).frozen = enable;
     }
 
-    pub fn set_size(&mut self, item: Item, w: i32, h: i32) {
+    pub fn set_size(&mut self, item: Item, w: u32, h: u32) {
         let pitem = self.get(item);
-        pitem.size.x = w;
-        pitem.size.y = h;
+        pitem.size.x = w as i32;
+        pitem.size.y = h as i32;
     }
 
-    pub fn get_width(&mut self, item: Item) -> i32 {
-        return self.get(item).size.x;
+    pub fn get_width(&mut self, item: Item) -> u32 {
+        return self.get(item).size.x as u32;
     }
 
-    pub fn get_height(&mut self, item: Item) -> i32 {
-        return self.get(item).size.y;
+    pub fn get_height(&mut self, item: Item) -> u32 {
+        return self.get(item).size.y as u32;
     }
 
-    pub fn set_layout(&mut self, item: Item, flags: u32) {
+    pub fn set_layout(&mut self, item: Item, flags: LayoutFlags) {
         self.get(item).layout_flags = flags;
     }
 
-    pub fn get_layout(&mut self, item: Item) -> u32 {
+    pub fn get_layout(&mut self, item: Item) -> LayoutFlags {
         return self.get(item).layout_flags;
     }
 
@@ -407,7 +407,7 @@ impl Context {
         self.get(item).visited |= 1<<dim;
         // traverse along left neighbors
         let mut iter = 0u;
-        while ((self.get(item).layout_flags>>dim) & LEFT.bits) != 0 {
+        while ((self.get(item).layout_flags.bits>>dim) & LEFT.bits) != 0 {
             let item = self.get(item).relto[dim];
             if item.invalid() { break };
             let pitem = self.get(item);
@@ -420,7 +420,8 @@ impl Context {
         }
         // traverse along right neighbors
         iter = 0;
-        while ((self.get(item).layout_flags>>dim) & RIGHT.bits) != 0 {
+        // FIXME flags
+        while ((self.get(item).layout_flags.bits>>dim) & RIGHT.bits) != 0 {
             let item = self.get(item).relto[wdim];
             if item.invalid() { break };
             let pitem = self.get(item);
@@ -489,7 +490,7 @@ impl Context {
         let mut x = 0;
         let mut s = self.get(parent).rect[wdim];
 
-        let flags = (*self)[item].layout_flags>>dim;
+        let flags = (*self)[item].layout_flags.bits>>dim;
         let flags = LayoutFlags::from_bits(flags).expect("bitfail");
         let hasl = flags.contains(LEFT) && (*self)[item].relto[dim].valid();
         let hasr = flags.contains(RIGHT) && (*self)[item].relto[wdim].valid();
@@ -606,7 +607,7 @@ impl Context {
         return self.data.mut_slice(data as uint, datasize as uint);
     }
 
-    pub fn alloc_data(&mut self, item: Item, size: i32) -> &[u8] {
+    pub fn alloc_data(&mut self, item: Item, size: uint) -> &mut [u8] {
         assert!((size > 0) && ((size as uint) < (MAX_DATASIZE as uint)));
         let alloc = self.datasize;
         self.datasize += size;
@@ -614,9 +615,9 @@ impl Context {
             let pitem = self.get(item);
             assert!(pitem.data < 0);
             assert!((alloc+size) as uint <= MAX_BUFFERSIZE as uint);
-            pitem.data = alloc;
+            pitem.data = alloc as int;
         }
-        return self.data.slice(alloc as uint, size as uint);
+        return self.data.mut_slice(alloc as uint, size as uint);
     }
 
     pub fn set_handle(&mut self, item: Item, handle: Handle) {

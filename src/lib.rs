@@ -89,7 +89,9 @@ bitflags!(
         static APPEND           =  ffi::UI_APPEND
     }
 )
-pub type Handler = Option<extern "C" fn(arg1: i32, arg2: EventFlags)>;
+
+//pub type Handler = Option<extern "C" fn(arg1: i32, arg2: EventFlags)>;
+pub type Handler = Option<fn(arg1: Item, arg2: EventFlags)>;
 
 #[repr(C)]
 pub struct Vec2 {

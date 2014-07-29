@@ -1,5 +1,7 @@
 #![feature(globs)]
 #![allow(unused_imports)]
+#![allow(unused_variable)]
+#![allow(dead_code)]
 
 extern crate graphics;
 extern crate piston;
@@ -23,8 +25,8 @@ use blendish::*;
 use blendish::lowlevel_draw::LowLevelDraw;
 use blendish::themed_draw::ThemedDraw;
 use resources::Resources;
-use oui::Context;
-use oui::oui::*;
+pub use oui::Context;
+pub use oui::oui::*;
 
 mod ui;
 mod resources;
@@ -78,8 +80,8 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
 
     fn update(&mut self, window: &mut W, args: &UpdateArgs) {
         self.elapsed_time += args.dt;
-        let (mx, my) = window.get_cursor_pos();
-        self.oui.set_cursor(mx, my);
+        //let (mx, my) = window.get_cursor_pos();
+        //self.oui.set_cursor(mx, my);
     }
 
     #[allow(unused_variable)]
@@ -99,7 +101,7 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
         self.nvg().begin_frame(w as i32, h as i32, pxRatio);
 
         draw_bg(self.nvg(), 0.0,0.0, w,h);
-        ui::draw(&mut self.themed, w,h, t);
+        ui::draw(&mut self.oui, &mut self.themed, w,h, t);
 
         self.nvg().end_frame();
     }
@@ -108,14 +110,15 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
     //fn key_release(&mut self, _window: &mut W, _args: &KeyReleaseArgs) {}
 
     fn mouse_press(&mut self, _window: &mut W, args: &MousePressArgs) {
-        self.oui.set_button(args.button, true);
+//        self.oui.set_button(args.button, true);
     }
     fn mouse_release(&mut self, _window: &mut W, args: &MouseReleaseArgs) {
-        self.oui.set_button(args.button, false);
+//        self.oui.set_button(args.button, false);
     }
-    //fn mouse_move(&mut self, _window: &mut W, args: &MouseMoveArgs) {
-    //    self.mouse = (args.x as i32, args.y as i32);
-    //}
+    fn mouse_move(&mut self, _window: &mut W, args: &MouseMoveArgs) {
+        self.mouse = (args.x as i32, args.y as i32);
+        self.oui.set_cursor(args.x as i32, args.y as i32);
+    }
     ///// Moved mouse relative, not bounded by cursor.
     //fn mouse_relative_move(&mut self, _window: &mut W, _args: &MouseRelativeMoveArgs) {}
     //fn mouse_scroll(&mut self, _window: &mut W, _args: &MouseScrollArgs) {}
