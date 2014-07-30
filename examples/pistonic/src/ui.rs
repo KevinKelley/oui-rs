@@ -1,48 +1,34 @@
 
-use std::mem::transmute;
 use std::mem::size_of;
+use std::rc::Rc;
+use std::cell::{RefCell, Cell};  // shared refs to ui-updatable data
 use nanovg::{Ctx};
+use blendish;
 use blendish::*;
-use blendish::{ CORNER_NONE,CORNER_ALL,CORNER_DOWN,CORNER_TOP,CORNER_RIGHT,CORNER_LEFT };
+use blendish::{ CORNER_NONE, CORNER_ALL, CORNER_DOWN, CORNER_TOP, CORNER_RIGHT, CORNER_LEFT };
 use blendish::{ DISABLED_ALPHA, ACTIVE, WIDGET_HEIGHT, };
 use blendish::constants::*;
 use blendish::themed_draw::ThemedDraw;
 use blendish::lowlevel_draw::LowLevelDraw;
+use oui;
 use oui::*;
-use oui::{LEFT};
+use oui::{Item, Context, LEFT};
 
 // FIXME need Some<iconid> apparently (seems to use -1 for no-icon)
-fn icon_id(x:u8, y:u8) -> i32 { ICONID(x,y) as i32 }
+fn icon_id(x:u8, y:u8) -> i32 { ICONID(x, y) as i32 }
 fn no_icon() -> i32 { -1 }
 //struct IconID(i32);
-// let iconid = IconID(icon_id(x,y)); let IconID(id) = iconid;
+// let iconid = IconID(icon_id(x, y)); let IconID(id) = iconid;
 ////////////////////////////////////////////////////////////////////////////////
-
-enum SubType {
-    ST_LABEL = 0,
-    ST_BUTTON = 1,
-    ST_RADIO = 2,
-    ST_SLIDER = 3,
-    ST_COLUMN = 4,
-    ST_ROW = 5,
-    ST_CHECK = 6,
-    ST_PANEL = 7,
-}
-struct UIData { subtype: SubType }
-struct UIButtonData<'a> { head: UIData, iconid: i32, label: &'a str, }
-struct UICheckData<'a>  { head: UIData, label: &'a str, option: &'a mut bool, }
-struct UIRadioData<'a>  { head: UIData, iconid: i32, label: &'a str, value: &'a mut i32, }
-struct UISliderData<'a> { head: UIData, label: &'a str, progress: &'a mut f32, }
-
-pub enum Widget {
-    Label { text:String },
+pub enum Widget<'a> {
+    Label { iconid:i32, text:String },
     Button { iconid:i32, text:String },
-    Check { text:String, option:bool },
-    Radio { iconid:i32, text:String, value:i32 },
-    Slider { text:String, progress:f32 },
-    Column { unused:i32 },
-    Row { unused:i32 },
-    Panel { unused: i32 }
+    Check { text:String, option: &'a Cell<bool> },
+    Radio { iconid:i32, text:String, value: &'a Cell<i32> },
+    Slider { text:String, progress: &'a Cell<f32> },
+    Row { unused:i8 },
+    Column { unused:i8 },
+    Panel { unused:i8 }
 }
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,358 +42,234 @@ pub enum Widget {
 // is first or last element in a sequence of 2 or more elements.
 fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
     let parent = ui.parent(item);
+    if parent.invalid() { return CORNER_NONE };
     let numkids = ui.get_child_count(parent);
-    if numkids < 2 {return CORNER_NONE;}
-    let head: UIData = unsafe { transmute(*(ui.get_data(parent).as_mut_ptr())) };
-//    if (head) {
-        let numid = ui.get_child_id(item);
-        match head.subtype {
-            ST_COLUMN => {
-                // first child, sharp corners down
-                if numid == 0 { return CORNER_DOWN; }
-                // last child, sharp corners up
-                else if numid == numkids-1 { return CORNER_TOP; }
-                // middle child, sharp everywhere
-                else { return CORNER_ALL; }
-            },
-            ST_ROW => {
-                // first child, sharp right
-                if numid == 0 { return CORNER_RIGHT; }
-                // last child, sharp left
-                else if numid == numkids-1 { return CORNER_LEFT; }
-                // middle child, sharp all
-                else { return CORNER_ALL; }
-            },
-            _ => {}
+    if numkids < 2 { return CORNER_NONE; }
+    let kidid = ui.get_child_id(item);
+    let widget = ui.get_widget(parent);
+    match *widget {
+        Column { unused:_ } => {
+            // first child, sharp corners down
+            if kidid == 0 { return CORNER_DOWN; }
+            // last child, sharp corners up
+            else if kidid == numkids-1 { return CORNER_TOP; }
+            // middle child, sharp everywhere
+            else { return CORNER_ALL; }
         }
-//    }
+        Row { unused: _ } => {
+            // first child, sharp right
+            if kidid == 0 { return CORNER_RIGHT; }
+            // last child, sharp left
+            else if kidid == numkids-1 { return CORNER_LEFT; }
+            // middle child, sharp all
+            else { return CORNER_ALL; }
+        }
+        _ => {}
+    };
     return CORNER_NONE;
 }
 
+////oui::ItemState
+//    COLD   = ffi::UI_COLD,
+//    HOT    = ffi::UI_HOT,
+//    ACTIVE = ffi::UI_ACTIVE,
+//    FROZEN = ffi::UI_FROZEN,
+////blendish::WidgetState
+//    DEFAULT  = ffi::BND_DEFAULT,
+//    HOVER    = ffi::BND_HOVER,
+//    ACTIVE   = ffi::BND_ACTIVE,
+
+
 // draw item and recurse for its children
-fn draw_ui(ui: &mut Context<Widget>, nvg: &mut Ctx, item: Item, x: i32, y: i32) {
-//    let head = (const UIData *)ui.get_data(item);
+fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32, y: i32) {
     let mut rect = ui.get_rect(item);
     rect.x += x;
     rect.y += y;
-    if ui.get_state(item) == FROZEN {
-        nvg.global_alpha(DISABLED_ALPHA);
+    let (x,y,w,h) = {
+        let rect = ui.get_rect(item);
+        ((rect.x + x) as f32, (rect.y + y) as f32, rect.w as f32, rect.h as f32)
+    };
+    let item_state = ui.get_state(item);
+
+    let widget_state = match item_state {
+        COLD => DEFAULT,
+        HOT => HOVER,
+        oui::ACTIVE => blendish::ACTIVE,
+        _ => DEFAULT
+    };
+
+    let frozen = item_state == FROZEN;
+    if frozen {
+        vg.nvg().global_alpha(DISABLED_ALPHA);
     }
-//    if (head) {
-//        switch(head.subtype) {
-//            default: {
-//                testrect(vg,rect);
-//            } break;
-//            case ST_PANEL: {
-//                bndBevel(vg,rect.x,rect.y,rect.w,rect.h);
-//            } break;
-//            case ST_LABEL: {
-//                assert(head);
-//                const UIButtonData *data = (UIButtonData*)head;
-//                bndLabel(vg,rect.x,rect.y,rect.w,rect.h,
-//                    data.iconid,data.label);
-//            } break;
-//            case ST_BUTTON: {
-//                const UIButtonData *data = (UIButtonData*)head;
-//                bndToolButton(vg,rect.x,rect.y,rect.w,rect.h,
-//                    corner_flags(item),(BNDwidgetState)ui.get_state(item),
-//                    data.iconid,data.label);
-//            } break;
-//            case ST_CHECK: {
-//                const UICheckData *data = (UICheckData*)head;
-//                BNDwidgetState state = (BNDwidgetState)ui.get_state(item);
-//                if (*data.option)
-//                    state = ACTIVE;
-//                bndOptionButton(vg,rect.x,rect.y,rect.w,rect.h, state,
-//                    data.label);
-//            } break;
-//            case ST_RADIO:{
-//                const UIRadioData *data = (UIRadioData*)head;
-//                BNDwidgetState state = (BNDwidgetState)ui.get_state(item);
-//                if (*data.value == ui.get_child_id(item))
-//                    state = ACTIVE;
-//                bndRadioButton(vg,rect.x,rect.y,rect.w,rect.h,
-//                    corner_flags(item),state,
-//                    data.iconid,data.label);
-//            } break;
-//            case ST_SLIDER:{
-//                const UISliderData *data = (UISliderData*)head;
-//                BNDwidgetState state = (BNDwidgetState)ui.get_state(item);
-//                static char value[32];
-//                spri32f(value,"%.0f%%",(*data.progress)*100.0);
-//                bndSlider(vg,rect.x,rect.y,rect.w,rect.h,
-//                    corner_flags(item),state,
-//                    *data.progress,data.label,value);
-//            } break;
-//        }
-//    } else {
-//        testrect(vg,rect);
-//    }
+
+    let kidid = ui.get_child_id(item);
+
+    let cornerflags = corner_flags(ui, item);
+
+    match *ui.get_widget(item) {
+        Panel { unused:_ } => {
+            let bg = vg.theme().backgroundColor;
+            vg.nvg().draw_bevel(x, y, w, h, bg);
+        }
+        Label { iconid:iconid, text:ref label } => {
+            vg.draw_label(x, y, w, h, iconid as u32, label.as_slice());
+        }
+        Button { iconid:iconid, text:ref label } => {
+            vg.draw_tool_button(x, y, w, h,
+                cornerflags, widget_state,
+                iconid as u32, label.as_slice());
+        }
+        Check { text:ref label, option:option } => {
+            let state =
+                if option.get() { blendish::ACTIVE }
+                else { widget_state };
+            vg.draw_option_button(x, y, w, h, state, label.as_slice());
+        }
+        Radio { iconid:iconid, text:ref label, value:value } => {
+            let state =
+                if value.get() == kidid { blendish::ACTIVE }
+                else { widget_state };
+            vg.draw_radio_button(x, y, w, h,
+                cornerflags, state,
+                iconid as u32, label.as_slice());
+        }
+        Slider { text:ref label, progress:progress } => {
+            let val = progress.get();
+            let val_str = format!("{}", val*100.0);
+            vg.draw_slider(x, y, w, h,
+                cornerflags, widget_state,
+                val, label.as_slice(), val_str.as_slice());
+        }
+        _ => {
+            //testrect(vg, rect);
+        }
+    }
 
     let mut kid = ui.first_child(item);
     while kid.valid() { // was, > 0 meaning valid and not root ?
-        draw_ui(ui, nvg, kid, rect.x, rect.y);
+        draw_ui(ui, vg, kid, rect.x, rect.y);
         kid = ui.next_sibling(kid);
     }
-    if ui.get_state(item) == FROZEN {
-        nvg.global_alpha(1.0);  // was frozen, restore full alpha
+
+    if frozen {
+        vg.nvg().global_alpha(1.0);  // was frozen, restore full alpha
     }
 }
 
 fn label(ui:&mut Context<Widget>, parent: Item, iconid: i32, label: &str) -> Item {
-    let item = ui.item();
+    let lbl = Label { iconid:iconid, text:label.to_string() };
+    let item = ui.item(lbl);
     ui.set_size(item, 0, WIDGET_HEIGHT);
-//    {
-//        //UIButtonData *data = (UIButtonData *)ui.alloc_data(item, sizeof(UIButtonData));
-//        let data = ui.alloc_data(item, size_of::<UIButtonData>());
-//        let mut data: UIButtonData = unsafe { transmute(data) };
-//        data.head.subtype = ST_LABEL;
-//        data.iconid = iconid;
-//        data.label = label;
-//    }
     ui.append(parent, item);
     return item;
-}
-
-fn demohandler(item: Item, event: EventFlags) {
-//    let data = (const UIButtonData *)ui.get_data(item);
-//    printf("clicked: %lld %s\n", ui.get_handle(item), data.label);
 }
 
 fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler) -> Item {
     // create new ui item
-    let item = ui.item();
+    // (store some custom data with the button that we use for styling)
+    let btn = Button { iconid:iconid, text:label.to_string() };
+    let item = ui.item(btn);
     // set persistent handle for item that is used
     // to track activity over time
     ui.set_handle(item, handle);
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach event handler e.g. demohandler above
-    ui.set_handler(item, handler, BUTTON0_HOT_UP);
-    // store some custom data with the button that we use for styling
-//    {
-//        //UIButtonData *data = (UIButtonData *)ui.alloc_data(item, sizeof(UIButtonData));
-//        let data = ui.alloc_data(item, size_of::<UIButtonData>());
-//        let mut data: UIButtonData = unsafe { transmute(data) };
-//        data.head.subtype = ST_BUTTON;
-//        data.iconid = iconid;
-//        data.label = label;
-//    }
+    //ui.set_handler(item, handler, BUTTON0_HOT_UP);
+
     ui.append(parent, item);
     return item;
 }
 
-fn checkhandler(item: Item, event: EventFlags) {
-//    let data = (const UICheckData *)ui.get_data(item);
-//    *data.option = !(*data.option);
-}
-
-fn check(ui:&mut Context<Widget>, parent: Item, handle: Handle, label: &str, option: &mut bool) -> Item {
+fn check<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, option: &'a Cell<bool>) -> Item {
     // create new ui item
-    let item = ui.item();
+    let chk = Check { text:label.to_string(), option:option };
+    let item = ui.item(chk);
     // set persistent handle for item that is used
     // to track activity over time
     ui.set_handle(item, handle);
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach event handler e.g. demohandler above
-    ui.set_handler(item, Some(checkhandler), BUTTON0_DOWN);
-    // store some custom data with the button that we use for styling
-//    {
-//    //UICheckData *data = (UICheckData *)ui.alloc_data(item, sizeof(UICheckData));
-//        let data = ui.alloc_data(item, size_of::<UICheckData>());
-//        let mut data: UICheckData = unsafe { transmute(data) };
-//        data.head.subtype = ST_CHECK;
-//        data.label = label;
-//        data.option = option;
-//    }
+    //ui.set_handler(item, Some(checkhandler), BUTTON0_DOWN);
     ui.append(parent, item);
     return item;
 }
 
-// simple logic for a slider
-
-// starting offset of the currently active slider
-//static sliderstart: f32 = 0.0;
-
-// event handler for slider (same handler for all sliders)
-fn sliderhandler(item: Item, event: EventFlags) {
-//    // retrieve the custom data we saved with the slider
-//    let data = (UISliderData *)ui.get_data(item);
-//    switch(event) {
-//        default: break;
-//        case BUTTON0_DOWN: {
-//            // button was pressed for the first time; capture initial
-//            // slider value.
-//            sliderstart = *data.progress;
-//        } break;
-//        case BUTTON0_CAPTURE: {
-//            // called for every frame that the button is pressed.
-//            // get the delta between the click point and the current
-//            // mouse position
-//            UIvec2 pos = ui.get_cursor_start_delta();
-//            // get the items layouted rectangle
-//            UIrect rc = ui.get_rect(item);
-//            // calculate our new offset and clamp
-//            let value = sliderstart + ((float)pos.x / (float)rc.w);
-//            value = (value<0)?0:(value>1)?1:value;
-//            // assign the new value
-//            *data.progress = value;
-//        } break;
-//    }
-}
-
-fn slider(ui:&mut Context<Widget>, parent: Item, handle: Handle, label: &str, progress: &mut f32) -> Item {
+fn slider<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, progress: &'a Cell<f32>) -> Item {
     // create new ui item
-    let item = ui.item();
+    let sli = Slider { text:label.to_string(), progress:progress };
+    let item = ui.item(sli);
     // set persistent handle for item that is used
     // to track activity over time
     ui.set_handle(item, handle);
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach our slider event handler and capture two classes of events
-    ui.set_handler(item, Some(sliderhandler),
-        BUTTON0_DOWN | BUTTON0_CAPTURE);
-    // store some custom data with the button that we use for styling
-    // and logic, e.g. the pointer to the data we want to alter.
-//    {
-//        //UISliderData *data = (UISliderData *)ui.alloc_data(item, sizeof(UISliderData));
-//        let data = ui.alloc_data(item, size_of::<UISliderData>());
-//        let mut data: UISliderData = unsafe { transmute(data) };
-//        data.head.subtype = ST_SLIDER;
-//        data.label = label;
-//        data.progress = progress;
-//    }
+    //ui.set_handler(item, Some(sliderhandler), BUTTON0_DOWN | BUTTON0_CAPTURE);
     ui.append(parent, item);
     return item;
 }
 
-// simple logic for a radio button
-fn radiohandler(item: Item, event: EventFlags) {
-//    UIRadioData *data = (UIRadioData *)ui.get_data(item);
-//    *data.value = ui.get_child_id(item);
-}
-
-fn radio(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, value: &mut i32) -> Item {
-    let item = ui.item();
+fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, value: &'a Cell<i32>) -> Item {
+    let rad = Radio { iconid:iconid, text:label.to_string(), value:value };
+    let item = ui.item(rad);
     ui.set_handle(item, handle);
     let w = if label.len() > 0 { TOOL_WIDTH } else { 0 };
     ui.set_size(item, w, WIDGET_HEIGHT);
-//    {
-//        //UIRadioData *data = (UIRadioData *)ui.alloc_data(item, sizeof(UIRadioData));
-//        let data = ui.alloc_data(item, size_of::<UIRadioData>());
-//        let mut data: UIRadioData = unsafe { transmute(data) };
-//        data.head.subtype = ST_RADIO;
-//        data.iconid = iconid;
-//        data.label = label;
-//        data.value = value;
-//    }
-    ui.set_handler(item, Some(radiohandler), BUTTON0_DOWN);
+    //ui.set_handler(item, Some(radiohandler), BUTTON0_DOWN);
     ui.append(parent, item);
     return item;
 }
 
-
 fn panel(ui:&mut Context<Widget>) -> Item {
-    let item = ui.item();
-    let data = ui.alloc_data(item, size_of::<UIData>());
-        let mut data: UIData = unsafe { transmute(*data.as_mut_ptr()) };
-    data.subtype = ST_PANEL;
-    return item;
-}
-
-fn columnhandler(parent: Item, event: EventFlags) {
-//    let item = ui.last_child(parent);
-//    let last = ui.prev_sibling(item);
-//    // mark the new item as positioned under the previous item
-//    ui.set_rel_to_top(item, last);
-//    // fill parent horizontally, anchor to previous item vertically
-//    ui.set_layout(item, HFILL|TOP);
-//    // if not the first item, add a margin of 1
-//    ui.set_margins(item, 0, (last < 0)?0:1, 0, 0);
+    ui.item(Panel{unused:0})
 }
 
 fn column(ui:&mut Context<Widget>, parent: Item) -> Item {
-    let item = ui.item();
-    ui.set_handler(item, Some(columnhandler), APPEND);
+    let item = ui.item(Column{unused:0});
+    //ui.set_handler(item, Some(columnhandler), APPEND);
     ui.append(parent, item);
     return item;
-}
-
-fn rowhandler(parent: Item, event: EventFlags) {
-//    let item = ui.last_child(parent);
-//    let last = ui.prev_sibling(item);
-//    ui.set_rel_to_left(item, last);
-//    if (last > 0)
-//        ui.set_rel_to_right(last, item);
-//    ui.set_layout(item, LEFT|RIGHT);
-//    ui.set_margins(item, (last < 0)?0:8, 0, 0, 0);
 }
 
 fn row(ui: &mut Context<Widget>, parent: Item) -> Item {
-    let item = ui.item();
-    ui.set_handler(item, Some(rowhandler), APPEND);
+    let item = ui.item(Row{unused:0});
+    //ui.set_handler(item, Some(rowhandler), APPEND);
     ui.append(parent, item);
     return item;
-}
-
-fn vgrouphandler(parent: Item, event: EventFlags) {
-//    let item = ui.last_child(parent);
-//    let last = ui.prev_sibling(item);
-//    // mark the new item as positioned under the previous item
-//    ui.set_rel_to_top(item, last);
-//    // fill parent horizontally, anchor to previous item vertically
-//    ui.set_layout(item, HFILL|TOP);
-//    // if not the first item, add a margin
-//    ui.set_margins(item, 0, (last < 0)?0:-2, 0, 0);
 }
 
 fn vgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
-    let item = ui.item();
-    {
-        let data = ui.alloc_data(item, size_of::<UIData>());
-        let mut data: UIData = unsafe { transmute(*data.as_mut_ptr()) };
-        data.subtype = ST_COLUMN;
-    }
-    ui.set_handler(item, Some(vgrouphandler), APPEND);
+    let item = ui.item(Column{unused:0});
+    //ui.set_handler(item, Some(vgrouphandler), APPEND);
     ui.append(parent, item);
     return item;
-}
-
-fn hgrouphandler(parent: Item, event: EventFlags) {
-//    let item = ui.last_child(parent);
-//    let last = ui.prev_sibling(item);
-//    ui.set_rel_to_left(item, last);
-//    if (last > 0)
-//        ui.set_rel_to_right(last, item);
-//    ui.set_layout(item, LEFT|RIGHT);
-//    ui.set_margins(item, (last < 0)?0:-1, 0, 0, 0);
 }
 
 fn hgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
-    let item = ui.item();
-    {
-        let data = ui.alloc_data(item, size_of::<UIData>());
-        let mut data: UIData = unsafe { transmute(*data.as_mut_ptr()) };
-        data.subtype = ST_ROW;
-    }
-    ui.set_handler(item, Some(hgrouphandler), APPEND);
+    let item = ui.item(Row{unused:0});
+    //ui.set_handler(item, Some(hgrouphandler), APPEND);
     ui.append(parent, item);
     return item;
 }
 
 
-pub fn draw(ui: &mut Context<Widget>, ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
-{
-    // some OUI stuff
 
-    // some persistent variables for demonstration
-    static mut enum1: i32 = 0;
-    static mut progress1:f32 = 0.25;
-    static mut progress2:f32 = 0.75;
-    static mut option1: bool = true;
-    static mut option2: bool = false;
-    static mut option3: bool = false;
+fn demohandler(item: Item, event: EventFlags) {}
+
+pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
+{
+    let enum1     = Cell::new(1i32);
+    let progress1 = Cell::new(0.25f32);
+    let progress2 = Cell::new(0.75f32);
+    let option1   = Cell::new(true);
+    let option2   = Cell::new(false);
+    let option3   = Cell::new(false);
+
+    let mut oui = Context::create_context();
+    let ui = &mut oui;
 
     ui.clear();
 
@@ -426,12 +288,10 @@ pub fn draw(ui: &mut Context<Widget>, ctx: &mut ThemedContext, w:f32, h:f32, t: 
 
     {
         let h = hgroup(ui, col);
-        unsafe { // mutating static vars
-            radio(ui, h, 3, icon_id(6, 3), "Item 3.0", &mut enum1);
-            radio(ui, h, 4, icon_id(0, 10), "", &mut enum1);
-            radio(ui, h, 5, icon_id(1, 10), "", &mut enum1);
-            radio(ui, h, 6, icon_id(6, 3), "Item 3.3", &mut enum1);
-        }
+        radio(ui, h, 3, icon_id(6, 3), "Item 3.0", &enum1);
+        radio(ui, h, 4, icon_id(0, 10), "", &enum1);
+        radio(ui, h, 5, icon_id(1, 10), "", &enum1);
+        radio(ui, h, 6, icon_id(6, 3), "Item 3.3", &enum1);
     }
 
     {
@@ -442,25 +302,20 @@ pub fn draw(ui: &mut Context<Widget>, ctx: &mut ThemedContext, w:f32, h:f32, t: 
         button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
         button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
         let colr = vgroup(ui, rows);
-        unsafe { // mutating static vars
-            ui.set_frozen(colr, option1);
-        }
+        ui.set_frozen(colr, option1.get());
         label(ui, colr, no_icon(), "Items 4.1:");
         let colr = vgroup(ui, colr);
-        unsafe { // mutating static vars
-            slider(ui, colr, 9, "Item 4.1.0", &mut progress1);
-            slider(ui, colr, 10, "Item 4.1.1", &mut progress2);
-        }
+        slider(ui, colr, 9, "Item 4.1.0", &progress1);
+        slider(ui, colr, 10, "Item 4.1.1", &progress2);
     }
 
     button(ui, col, 11, icon_id(6, 3), "Item 5", None);
 
-    unsafe { // mutating static vars
-        check(ui, col, 12, "Frozen", &mut option1);
-        check(ui, col, 13, "Item 7", &mut option2);
-        check(ui, col, 14, "Item 8", &mut option3);
-    }
+    check(ui, col, 12, "Frozen", &option1);
+    check(ui, col, 13, "Item 7", &option2);
+    check(ui, col, 14, "Item 8", &option3);
+
     ui.layout();
-    draw_ui(ui, ctx.nvg(), root, 0, 0);
+    draw_ui(ui, ctx, root, 0, 0);
     ui.process();
 }
