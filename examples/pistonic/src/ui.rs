@@ -21,6 +21,7 @@ fn no_icon() -> i32 { -1 }
 //struct IconID(i32);
 // let iconid = IconID(icon_id(x, y)); let IconID(id) = iconid;
 ////////////////////////////////////////////////////////////////////////////////
+
 pub enum Widget<'a> {
     Label { iconid:i32, text:String },
     Button { iconid:i32, text:String },
@@ -32,11 +33,6 @@ pub enum Widget<'a> {
     Panel { unused:i8 }
 }
 ////////////////////////////////////////////////////////////////////////////////
-
-//void init(vg: nanovg::Ctx) {
-//    bndSetFont(nvgCreateFont(vg, "system", "../DejaVuSans.ttf"));
-//    bndSetIconImage(nvgCreateImage(vg, "../blender_icons16.png"));
-//}
 
 // calculate which corners are sharp for an item, depending on whether
 // the container the item is in has negative spacing, and the item
@@ -89,6 +85,7 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
     };
     let item_state = ui.get_state(item);
 
+    // OUI extends state, adding a "frozen" which gets dimmed
     let widget_state = match item_state {
         COLD => DEFAULT,
         HOT => HOVER,
@@ -107,6 +104,8 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
 
     match *ui.get_widget(item) {
         Panel { unused:_ } => {
+            // TODO move draw_bevel from lowlevel_draw to themed,
+            // using the theme bg
             let bg = vg.theme().backgroundColor;
             vg.nvg().draw_bevel(x, y, w, h, bg);
         }
@@ -214,7 +213,7 @@ fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: 
     let rad = Radio { iconid:iconid, text:label.to_string(), value:value };
     let item = ui.item(rad);
     ui.set_handle(item, handle);
-    let w = if label.len() > 0 { TOOL_WIDTH } else { 0 };
+    let w = if label.len() == 0 { TOOL_WIDTH } else { 0 };
     ui.set_size(item, w, WIDGET_HEIGHT);
     //ui.set_handler(item, Some(radiohandler), BUTTON0_DOWN);
     ui.append(parent, item);
@@ -399,32 +398,32 @@ pub fn draw(ctx: &mut ThemedContext, _w:f32, _h:f32, _t: f32)
 
     {
         let h = hgroup(ui, col);
-        radio(ui, h, 3, icon_id(6, 3), "Item 3.0", &enum1);
+        radio(ui, h, 3, icon_id(6,  3), "Item 3.0", &enum1);
         radio(ui, h, 4, icon_id(0, 10), "", &enum1);
         radio(ui, h, 5, icon_id(1, 10), "", &enum1);
-        radio(ui, h, 6, icon_id(6, 3), "Item 3.3", &enum1);
+        radio(ui, h, 6, icon_id(6,  3), "Item 3.3", &enum1);
     }
 
-//    {
-//        let rows = row(ui, col);
-//        let coll = vgroup(ui, rows);
-//        label(ui, coll, no_icon(), "Items 4.0:");
-//        let coll = vgroup(ui, coll);
-//        button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
-//        button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
-//        let colr = vgroup(ui, rows);
-//        ui.set_frozen(colr, option1.get());
-//        label(ui, colr, no_icon(), "Items 4.1:");
-//        let colr = vgroup(ui, colr);
-//        slider(ui, colr, 9, "Item 4.1.0", &progress1);
-//        slider(ui, colr, 10, "Item 4.1.1", &progress2);
-//    }
+    {
+        let rows = row(ui, col);
+        let coll = vgroup(ui, rows);
+        label(ui, coll, no_icon(), "Items 4.0:");
+        let coll = vgroup(ui, coll);
+        button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
+        button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
+        let colr = vgroup(ui, rows);
+        ui.set_frozen(colr, option1.get());
+        label(ui, colr, no_icon(), "Items 4.1:");
+        let colr = vgroup(ui, colr);
+        slider(ui, colr,  9, "Item 4.1.0", &progress1);
+        slider(ui, colr, 10, "Item 4.1.1", &progress2);
+    }
 
-//    button(ui, col, 11, icon_id(6, 3), "Item 5", None);
-//
-//    check(ui, col, 12, "Frozen", &option1);
-//    check(ui, col, 13, "Item 7", &option2);
-//    check(ui, col, 14, "Item 8", &option3);
+    button(ui, col, 11, icon_id(6, 3), "Item 5", None);
+
+    check(ui, col, 12, "Frozen", &option1);
+    check(ui, col, 13, "Item 7", &option2);
+    check(ui, col, 14, "Item 8", &option3);
 
     ui.layout();
     draw_ui(ui, ctx, root, 0, 0);
