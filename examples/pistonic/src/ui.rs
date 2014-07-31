@@ -5,6 +5,7 @@ use std::cell::{RefCell, Cell};  // shared refs to ui-updatable data
 use nanovg::{Ctx};
 use blendish;
 use blendish::*;
+use blendish::ThemedContext;
 use blendish::{ CORNER_NONE, CORNER_ALL, CORNER_DOWN, CORNER_TOP, CORNER_RIGHT, CORNER_LEFT };
 use blendish::{ DISABLED_ALPHA, ACTIVE, WIDGET_HEIGHT, };
 use blendish::constants::*;
@@ -28,7 +29,7 @@ pub enum Widget<'a> {
     Check { text:String, option: &'a Cell<bool> },
     Radio { iconid:i32, text:String, value: &'a Cell<i32> },
     Slider { text:String, progress: &'a Cell<f32> },
-    Row { unused:i8 },
+    Row { unused:i8 /*compiler doesn't support empty struct variants*/},
     Column { unused:i8 },
     Panel { unused:i8 }
 }
@@ -369,7 +370,7 @@ fn hgrouphandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
 // handlers
 ///////////////////////////////////////////////////////////////////////
 
-pub fn draw(ctx: &mut ThemedContext, _w:f32, _h:f32, _t: f32)
+pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, _t: f32)
 {
     let enum1     = Cell::new(1i32);
     let progress1 = Cell::new(0.25f32);
@@ -382,6 +383,9 @@ pub fn draw(ctx: &mut ThemedContext, _w:f32, _h:f32, _t: f32)
     let ui = &mut oui;
 
     ui.clear();
+
+    let bg = ctx.theme().backgroundColor;
+    ctx.nvg().draw_background(0.0, 0.0, w, h, bg);
 
     let root = panel(ui);
     // position root element
