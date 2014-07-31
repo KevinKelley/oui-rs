@@ -293,34 +293,34 @@ fn radiohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
 }
 
 // simple logic for a slider
-// starting offset of the currently active slider
-//static sliderstart: f32 = 0.0;
-
 // event handler for slider (same handler for all sliders)
 fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
-//    // retrieve the custom data we saved with the slider
-//    let data = (UISliderData *)ui.get_data(item);
-//    switch(event) {
-//        default: break;
-//        case BUTTON0_DOWN: {
-//            // button was pressed for the first time; capture initial
-//            // slider value.
-//            sliderstart = *data.progress;
-//        } break;
-//        case BUTTON0_CAPTURE: {
-//            // called for every frame that the button is pressed.
-//            // get the delta between the click point and the current
-//            // mouse position
-//            UIvec2 pos = ui.get_cursor_start_delta();
-//            // get the items layouted rectangle
-//            UIrect rc = ui.get_rect(item);
-//            // calculate our new offset and clamp
-//            let value = sliderstart + ((float)pos.x / (float)rc.w);
-//            value = (value<0)?0:(value>1)?1:value;
-//            // assign the new value
-//            *data.progress = value;
-//        } break;
-//    }
+    // starting offset of the currently active slider
+    static mut sliderstart: f32 = 0.0;
+    let pos = ui.get_cursor_start_delta();
+    let rc = ui.get_rect(item);
+    let widget = ui.get_widget(item);
+    match event {
+        BUTTON0_DOWN => {
+            match *widget {
+                Slider { text:_, progress: currval } => {
+                    unsafe { sliderstart = currval.get() };
+                }
+                _ => {}
+            }
+        }
+        BUTTON0_CAPTURE => {
+            let val = unsafe { sliderstart + (pos.x as f32 / rc.w as f32) };
+            let val = clamp(val, 0.0, 1.0);
+            match *widget {
+                Slider { text:_, progress: currval } => {
+                    currval.set(val);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
 }
 
 fn columnhandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
@@ -367,10 +367,10 @@ fn hgrouphandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
     let gap = if last.invalid() { 0 } else { -1 };
     ui.set_margins(item, gap,0,0,0);
 }
-// handlers
+// end handlers
 ///////////////////////////////////////////////////////////////////////
 
-pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, _t: f32)
+pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, (mx,my): (i32,i32), btn: bool, _t: f32)
 {
     let enum1     = Cell::new(1i32);
     let progress1 = Cell::new(0.25f32);
@@ -381,6 +381,13 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, _t: f32)
 
     let mut oui = Context::create_context();
     let ui = &mut oui;
+
+    // apply inputs: mouse and buttons, keys if needed
+
+    ui.set_button(0/*left button*/, btn);
+    ui.set_cursor(mx, my);
+
+    // setup the UI
 
     ui.clear();
 
@@ -430,6 +437,12 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, _t: f32)
     check(ui, col, 14, "Item 8", &option3);
 
     ui.layout();
-    draw_ui(ui, ctx, root, 0, 0);
+
+    // process input triggers to update item states
+
     ui.process();
+
+    // draw the ui
+
+    draw_ui(ui, ctx, root, 0, 0);
 }

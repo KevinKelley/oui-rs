@@ -37,6 +37,7 @@ mod resources;
 
 pub struct App<'a> {
     mouse: (i32,i32),           // current mouse pos
+    button: bool,               // is mousebutton pressed
     elapsed_time: f64,          // seconds since app start
     //oui: Context<Widget<'a>>,
     //appdata: ui::AppData<'a>,
@@ -51,6 +52,7 @@ impl<'a> App<'a> {
         let icons = resources.iconsheet;    // move resources into the ThemedContext
         App {
             mouse: (0,0),
+            button: false,
             elapsed_time: 0.0,         // time since app start
             //oui: Context::create_context(),
             //appdata: data,
@@ -82,17 +84,20 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
 
         self.nvg().begin_frame(w as i32, h as i32, pxRatio);
 
-        ui::draw(&mut self.themed, w,h, t);
+        ui::draw(&mut self.themed, w,h, self.mouse, self.button, t);
 
         self.nvg().end_frame();
     }
     //fn key_press(&mut self, _window: &mut W,  _args: &KeyPressArgs) {}
     //fn key_release(&mut self, _window: &mut W, _args: &KeyReleaseArgs) {}
-    fn mouse_press(&mut self, _window: &mut W, args: &MousePressArgs) {/*self.oui.set_button(args.button, true);*/}
-    fn mouse_release(&mut self, _window: &mut W, args: &MouseReleaseArgs) {}
+    fn mouse_press(&mut self, _window: &mut W, args: &MousePressArgs) {
+        self.button = true;
+    }
+    fn mouse_release(&mut self, _window: &mut W, args: &MouseReleaseArgs) {
+        self.button = false;
+    }
     fn mouse_move(&mut self, _window: &mut W, args: &MouseMoveArgs) {
         self.mouse = (args.x as i32, args.y as i32);
-        //self.oui.set_cursor(args.x as i32, args.y as i32);
     }
 }
 
