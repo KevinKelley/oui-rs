@@ -14,6 +14,7 @@ use oui;
 use oui::*;
 use oui::{Item, Context, LEFT};
 
+
 // FIXME need Some<iconid> apparently (seems to use -1 for no-icon)
 fn icon_id(x:u8, y:u8) -> i32 { ICONID(x, y) as i32 }
 fn no_icon() -> i32 { -1 }
@@ -82,9 +83,6 @@ fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
 
 // draw item and recurse for its children
 fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32, y: i32) {
-    let mut rect = ui.get_rect(item);
-    rect.x += x;
-    rect.y += y;
     let (x,y,w,h) = {
         let rect = ui.get_rect(item);
         ((rect.x + x) as f32, (rect.y + y) as f32, rect.w as f32, rect.h as f32)
@@ -148,7 +146,7 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
 
     let mut kid = ui.first_child(item);
     while kid.valid() { // was, > 0 meaning valid and not root ?
-        draw_ui(ui, vg, kid, rect.x, rect.y);
+        draw_ui(ui, vg, kid, x as i32, y as i32);
         kid = ui.next_sibling(kid);
     }
 
@@ -165,7 +163,7 @@ fn label(ui:&mut Context<Widget>, parent: Item, iconid: i32, label: &str) -> Ite
     return item;
 }
 
-fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler) -> Item {
+fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler<Widget>) -> Item {
     // create new ui item
     // (store some custom data with the button that we use for styling)
     let btn = Button { iconid:iconid, text:label.to_string() };
@@ -229,37 +227,150 @@ fn panel(ui:&mut Context<Widget>) -> Item {
 
 fn column(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item(Column{unused:0});
-    //ui.set_handler(item, Some(columnhandler), APPEND);
+    ui.set_handler(item, Some(columnhandler), APPEND);
     ui.append(parent, item);
     return item;
 }
 
 fn row(ui: &mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item(Row{unused:0});
-    //ui.set_handler(item, Some(rowhandler), APPEND);
+    ui.set_handler(item, Some(rowhandler), APPEND);
     ui.append(parent, item);
     return item;
 }
 
 fn vgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item(Column{unused:0});
-    //ui.set_handler(item, Some(vgrouphandler), APPEND);
+    ui.set_handler(item, Some(vgrouphandler), APPEND);
     ui.append(parent, item);
     return item;
 }
 
 fn hgroup(ui:&mut Context<Widget>, parent: Item) -> Item {
     let item = ui.item(Row{unused:0});
-    //ui.set_handler(item, Some(hgrouphandler), APPEND);
+    ui.set_handler(item, Some(hgrouphandler), APPEND);
     ui.append(parent, item);
     return item;
 }
 
 
+///////////////////////////////////////////////////////////////////////
+// handlers
 
-fn demohandler(item: Item, event: EventFlags) {}
+fn demohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
+    let handle = ui.get_handle(item);
+    let widget = ui.get_widget(item);
+    match *widget {
+        Button { text: ref mut label, iconid:_ } => {
+            println!("clicked: {} {}", handle, label);
+        }
+        _ => {}
+    }
+}
+fn checkhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
+    let handle = ui.get_handle(item);
+    let widget = ui.get_widget(item);
+    match *widget {
+        Check { text: ref mut label, option: option } => {
+            println!("clicked: {} {}", handle, label);
+            option.set(!option.get());
+        }
+        _ => {}
+    }
+}
+// simple logic for a radio button
+fn radiohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
+    let handle = ui.get_handle(item);
+    let kidid = ui.get_child_id(item);
+    let widget = ui.get_widget(item);
+    match *widget {
+        Radio { iconid:_, text: ref mut label, value: value } => {
+            println!("clicked: {} {}", handle, label);
+            value.set(kidid);
+        }
+        _ => {}
+    }
+}
 
-pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
+// simple logic for a slider
+// starting offset of the currently active slider
+//static sliderstart: f32 = 0.0;
+
+// event handler for slider (same handler for all sliders)
+fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
+//    // retrieve the custom data we saved with the slider
+//    let data = (UISliderData *)ui.get_data(item);
+//    switch(event) {
+//        default: break;
+//        case BUTTON0_DOWN: {
+//            // button was pressed for the first time; capture initial
+//            // slider value.
+//            sliderstart = *data.progress;
+//        } break;
+//        case BUTTON0_CAPTURE: {
+//            // called for every frame that the button is pressed.
+//            // get the delta between the click point and the current
+//            // mouse position
+//            UIvec2 pos = ui.get_cursor_start_delta();
+//            // get the items layouted rectangle
+//            UIrect rc = ui.get_rect(item);
+//            // calculate our new offset and clamp
+//            let value = sliderstart + ((float)pos.x / (float)rc.w);
+//            value = (value<0)?0:(value>1)?1:value;
+//            // assign the new value
+//            *data.progress = value;
+//        } break;
+//    }
+}
+
+fn columnhandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
+    let item = ui.last_child(parent);
+    let last = ui.prev_sibling(item);
+    // mark the new item as positioned under the previous item
+    ui.set_rel_to_top(item, last);
+    // fill parent horizontally, anchor to previous item vertically
+    ui.set_layout(item, HFILL|TOP);
+    // if not the first item, add a margin of 1
+    let gap = if last.invalid() { 0 } else { 1 };
+    ui.set_margins(item, 0,gap,0,0);
+}
+fn rowhandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
+    let item = ui.last_child(parent);
+    let last = ui.prev_sibling(item);
+    ui.set_rel_to_left(item, last);
+    if last.valid() {
+        ui.set_rel_to_right(last, item);
+    }
+    ui.set_layout(item, LEFT|RIGHT);
+    let gap = if last.invalid() { 0 } else { 8 };
+    ui.set_margins(item, gap,0,0,0);
+}
+fn vgrouphandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
+    let item = ui.last_child(parent);
+    let last = ui.prev_sibling(item);
+    // mark the new item as positioned under the previous item
+    ui.set_rel_to_top(item, last);
+    // fill parent horizontally, anchor to previous item vertically
+    ui.set_layout(item, HFILL|TOP);
+    // if not the first item, add a margin
+    let gap = if last.invalid() { 0 } else { -2 };
+    ui.set_margins(item, 0,gap,0,0);
+}
+fn hgrouphandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
+    let item = ui.last_child(parent);
+    let last = ui.prev_sibling(item);
+    ui.set_rel_to_left(item, last);
+    if last.valid() {
+        ui.set_rel_to_right(last, item);
+    }
+    ui.set_layout(item, LEFT|RIGHT);
+    let gap = if last.invalid() { 0 } else { -1 };
+    ui.set_margins(item, gap,0,0,0);
+}
+// handlers
+///////////////////////////////////////////////////////////////////////
+
+pub fn draw(ctx: &mut ThemedContext, _w:f32, _h:f32, _t: f32)
 {
     let enum1     = Cell::new(1i32);
     let progress1 = Cell::new(0.25f32);
@@ -276,8 +387,8 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
     let root = panel(ui);
     // position root element
     ui.set_layout(root, LEFT|TOP);
-    ui.set_margins(root, 600, 10, 0, 0);
-    ui.set_size(root, 250, 400);
+    ui.set_margins(root, 60, 10, 0, 0);
+    ui.set_size(root, 450, 400);
 
     let col = column(ui, root);
     ui.set_margins(col, 10, 10, 10, 10);
@@ -294,26 +405,26 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, t: f32)
         radio(ui, h, 6, icon_id(6, 3), "Item 3.3", &enum1);
     }
 
-    {
-        let rows = row(ui, col);
-        let coll = vgroup(ui, rows);
-        label(ui, coll, no_icon(), "Items 4.0:");
-        let coll = vgroup(ui, coll);
-        button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
-        button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
-        let colr = vgroup(ui, rows);
-        ui.set_frozen(colr, option1.get());
-        label(ui, colr, no_icon(), "Items 4.1:");
-        let colr = vgroup(ui, colr);
-        slider(ui, colr, 9, "Item 4.1.0", &progress1);
-        slider(ui, colr, 10, "Item 4.1.1", &progress2);
-    }
+//    {
+//        let rows = row(ui, col);
+//        let coll = vgroup(ui, rows);
+//        label(ui, coll, no_icon(), "Items 4.0:");
+//        let coll = vgroup(ui, coll);
+//        button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
+//        button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
+//        let colr = vgroup(ui, rows);
+//        ui.set_frozen(colr, option1.get());
+//        label(ui, colr, no_icon(), "Items 4.1:");
+//        let colr = vgroup(ui, colr);
+//        slider(ui, colr, 9, "Item 4.1.0", &progress1);
+//        slider(ui, colr, 10, "Item 4.1.1", &progress2);
+//    }
 
-    button(ui, col, 11, icon_id(6, 3), "Item 5", None);
-
-    check(ui, col, 12, "Frozen", &option1);
-    check(ui, col, 13, "Item 7", &option2);
-    check(ui, col, 14, "Item 8", &option3);
+//    button(ui, col, 11, icon_id(6, 3), "Item 5", None);
+//
+//    check(ui, col, 12, "Frozen", &option1);
+//    check(ui, col, 13, "Item 7", &option2);
+//    check(ui, col, 14, "Item 8", &option3);
 
     ui.layout();
     draw_ui(ui, ctx, root, 0, 0);

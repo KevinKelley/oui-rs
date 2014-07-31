@@ -99,7 +99,7 @@ bitflags!(
 )
 
 //pub type Handler = Option<extern "C" fn(arg1: i32, arg2: EventFlags)>;
-pub type Handler = Option<fn(arg1: Item, arg2: EventFlags)>;
+pub type Handler<Wgt> = Option<fn(ui: &mut Context<Wgt>, arg1: Item, arg2: EventFlags)>;
 
 #[repr(C)]
 pub struct Vec2 {
@@ -183,7 +183,7 @@ pub struct ItemImp<Wgt> {
     handle: Handle,
 
     // handler
-    handler: Handler,
+    handler: Handler<Wgt>,
 
     // container structure
 
@@ -431,9 +431,10 @@ impl<Wgt> Context<Wgt> {
     }
 
     pub fn notify_item(&mut self, item: Item, event: EventFlags) {
-        let pitem = self.get(item);
-        if pitem.handler.is_some() && pitem.event_flags.contains(event) {
-            (pitem.handler.unwrap())(item, event);
+        if !self.get(item).event_flags.contains(event) { return; }
+        let handler = self.get(item).handler;
+        if handler.is_some() {
+            (handler.unwrap())(self, item, event);
         }
     }
 
@@ -619,13 +620,13 @@ impl<Wgt> Context<Wgt> {
         return self.get(item).handle;
     }
 
-    pub fn set_handler(&mut self, item: Item, handler: Handler, flags: EventFlags) {
+    pub fn set_handler(&mut self, item: Item, handler: Handler<Wgt>, flags: EventFlags) {
         let pitem =self. get(item);
         pitem.handler = handler;
         pitem.event_flags = flags;
     }
 
-    pub fn get_handler(&mut self, item: Item) -> Handler {
+    pub fn get_handler(&mut self, item: Item) -> Handler<Wgt> {
         return self.get(item).handler;
     }
 
@@ -714,10 +715,12 @@ impl<Wgt> Context<Wgt> {
         self.get(item).visited |= 1<<dim;
         // traverse along left neighbors
         let mut iter = 0u;
-        while ((self.get(item).layout_flags.bits>>dim) & LEFT.bits) != 0 {
-            let item = self.get(item).relto[dim];
-            if item.invalid() { break };
-            let pitem = self.get(item);
+        let mut prev = item;
+        // FIXME flags
+        while ((self.get(prev).layout_flags.bits>>dim) & LEFT.bits) != 0 {
+            prev = self.get(prev).relto[dim];
+            if prev.invalid() { break };
+            let pitem = self.get(prev);
             pitem.visited |= 1<<dim;
             size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
             *need_size = (*need_size) + size;
@@ -726,12 +729,13 @@ impl<Wgt> Context<Wgt> {
             assert!(iter<1000000); // infinite loop
         }
         // traverse along right neighbors
-        iter = 0;
+        let mut iter = 0u;
+        let mut next = item;
         // FIXME flags
-        while ((self.get(item).layout_flags.bits>>dim) & RIGHT.bits) != 0 {
-            let item = self.get(item).relto[wdim];
-            if item.invalid() { break };
-            let pitem = self.get(item);
+        while ((self.get(next).layout_flags.bits>>dim) & RIGHT.bits) != 0 {
+            next = self.get(next).relto[wdim];
+            if next.invalid() { break };
+            let pitem = self.get(next);
             pitem.visited |= 1<<dim;    // are we gettin our dim's and wdim's mixed up? idono
             size = pitem.rect[wdim] + pitem.margins[dim] + pitem.margins[wdim];
             *need_size = (*need_size) + size;
