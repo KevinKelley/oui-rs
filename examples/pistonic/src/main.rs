@@ -1,10 +1,11 @@
 #![feature(globs)]
 #![feature(struct_variant)]
+#![feature(unsafe_destructor)]
 #![allow(unused_imports)]
 #![allow(unused_variable)]
 #![allow(dead_code)]
 
-extern crate graphics;
+//extern crate graphics;
 extern crate piston;
 extern crate glfw_game_window;
 
@@ -13,6 +14,7 @@ extern crate blendish;
 extern crate oui;
 
 use std::rc::Rc;
+use std::gc::{Gc,GC};
 use std::cell::{RefCell,Cell};
 
 pub use Window = glfw_game_window::GameWindowGLFW;
@@ -29,18 +31,47 @@ use blendish::*;
 use blendish::lowlevel_draw::LowLevelDraw;
 use blendish::themed_draw::ThemedDraw;
 use resources::Resources;
-
+use oui::Context;
+use ui::Widget;
 mod ui;
 mod resources;
 
 ///////////////////////////////////////////////////////////////////////
 
+#[deriving(Show)]
+pub struct AppData {
+    // some persistent variables for demonstration
+    pub enum1:     Gc<Cell<i32>>,
+    pub progress1: Gc<Cell<f32>>,
+    pub progress2: Gc<Cell<f32>>,
+    pub option1:  Gc<Cell<bool>>,
+    pub option2:  Gc<Cell<bool>>,
+    pub option3:  Gc<Cell<bool>>,
+}
+#[unsafe_destructor]
+impl Drop for AppData {
+    fn drop(&mut self) {
+        println!("drop appdata {}", self);
+    }
+}
+
+pub fn init_app_data() -> AppData {
+    AppData {
+        enum1:     box (GC) Cell::new(0),
+        progress1: box (GC) Cell::new(0.25),
+        progress2: box (GC) Cell::new(0.75),
+        option1:   box (GC) Cell::new(true),
+        option2:   box (GC) Cell::new(false),
+        option3:   box (GC) Cell::new(false),
+    }
+}
+
 pub struct App<'a> {
     mouse: (i32,i32),           // current mouse pos
     button: bool,               // is mousebutton pressed
     elapsed_time: f64,          // seconds since app start
-    //oui: Context<Widget<'a>>,
-    //appdata: ui::AppData<'a>,
+    ui: Context<Widget<'a>>,
+    data: AppData,
     themed: ThemedContext<'a>   // wrap nvg ctx w/ themed-draw fns
 }
 
@@ -54,8 +85,8 @@ impl<'a> App<'a> {
             mouse: (0,0),
             button: false,
             elapsed_time: 0.0,         // time since app start
-            //oui: Context::create_context(),
-            //appdata: data,
+            ui: ui::create(),
+            data: init_app_data(),
             themed: ThemedContext::wrap(nvg, icons, font)
         }
     }
@@ -65,12 +96,15 @@ impl<'a> App<'a> {
 
 impl<'a, W: GameWindow> Game<W> for App<'a>
 {
-    fn load(&mut self, _window: &mut W) {}
+    fn load<'a>(&'a mut self, _window: &mut W) {
+        ui::init(self);
+    }
 
     fn update(&mut self, window: &mut W, args: &UpdateArgs) {
         self.elapsed_time += args.dt;
         //let (mx, my) = window.get_cursor_pos();
         //self.oui.set_cursor(mx, my);
+        ui::update(&mut self.ui, self.mouse, self.button, self.elapsed_time as f32);
     }
 
     #[allow(unused_variable)]
@@ -84,12 +118,10 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
 
         self.nvg().begin_frame(w as i32, h as i32, pxRatio);
 
-        ui::draw(&mut self.themed, w,h, self.mouse, self.button, t);
+        ui::draw(&mut self.ui, &mut self.themed, w,h);
 
         self.nvg().end_frame();
     }
-    //fn key_press(&mut self, _window: &mut W,  _args: &KeyPressArgs) {}
-    //fn key_release(&mut self, _window: &mut W, _args: &KeyReleaseArgs) {}
     fn mouse_press(&mut self, _window: &mut W, args: &MousePressArgs) {
         self.button = true;
     }

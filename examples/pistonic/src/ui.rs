@@ -1,6 +1,7 @@
 
 use std::mem::size_of;
 use std::rc::Rc;
+use std::gc::{Gc,GC};
 use std::cell::{RefCell, Cell};  // shared refs to ui-updatable data
 use nanovg::{Ctx};
 use blendish;
@@ -14,6 +15,7 @@ use blendish::lowlevel_draw::LowLevelDraw;
 use oui;
 use oui::*;
 use oui::{Item, Context, LEFT};
+use super::AppData;
 
 
 // FIXME need Some<iconid> apparently (seems to use -1 for no-icon)
@@ -26,9 +28,9 @@ fn no_icon() -> i32 { -1 }
 pub enum Widget<'a> {
     Label { iconid:i32, text:String },
     Button { iconid:i32, text:String },
-    Check { text:String, option: &'a Cell<bool> },
-    Radio { iconid:i32, text:String, value: &'a Cell<i32> },
-    Slider { text:String, progress: &'a Cell<f32> },
+    Check { text:String, option: Gc<Cell<bool>> },
+    Radio { iconid:i32, text:String, value: Gc<Cell<i32>> },
+    Slider { text:String, progress: Gc<Cell<f32>> },
     Row { unused:i8 /*compiler doesn't support empty struct variants*/},
     Column { unused:i8 },
     Panel { unused:i8 }
@@ -126,7 +128,7 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
         }
         Radio { iconid:iconid, text:ref label, value:value } => {
             let state =
-                if value.get() == kidid { blendish::ACTIVE }
+                if (*value).get() == kidid { blendish::ACTIVE }
                 else { widget_state };
             vg.draw_radio_button(x, y, w, h,
                 cornerflags, state,
@@ -155,6 +157,7 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
     }
 }
 
+
 fn label(ui:&mut Context<Widget>, parent: Item, iconid: i32, label: &str) -> Item {
     let lbl = Label { iconid:iconid, text:label.to_string() };
     let item = ui.item(lbl);
@@ -163,7 +166,7 @@ fn label(ui:&mut Context<Widget>, parent: Item, iconid: i32, label: &str) -> Ite
     return item;
 }
 
-fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler<Widget>) -> Item {
+fn button<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, handler: Handler<Widget<'a>>) -> Item {
     // create new ui item
     // (store some custom data with the button that we use for styling)
     let btn = Button { iconid:iconid, text:label.to_string() };
@@ -174,13 +177,12 @@ fn button(ui:&mut Context<Widget>, parent: Item, handle: Handle, iconid: i32, la
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach event handler e.g. demohandler above
-    //ui.set_handler(item, handler, BUTTON0_HOT_UP);
-
+    ui.set_handler(item, handler, BUTTON0_DOWN); // HOT_UP
     ui.append(parent, item);
     return item;
 }
 
-fn check<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, option: &'a Cell<bool>) -> Item {
+fn check<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, option: Gc<Cell<bool>>) -> Item {
     // create new ui item
     let chk = Check { text:label.to_string(), option:option };
     let item = ui.item(chk);
@@ -190,12 +192,12 @@ fn check<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach event handler e.g. demohandler above
-    //ui.set_handler(item, Some(checkhandler), BUTTON0_DOWN);
+    ui.set_handler(item, Some(checkhandler), BUTTON0_DOWN);
     ui.append(parent, item);
     return item;
 }
 
-fn slider<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, progress: &'a Cell<f32>) -> Item {
+fn slider<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: &str, progress: Gc<Cell<f32>>) -> Item {
     // create new ui item
     let sli = Slider { text:label.to_string(), progress:progress };
     let item = ui.item(sli);
@@ -205,18 +207,18 @@ fn slider<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: 
     // set size of wiget; horizontal size is dynamic, vertical is fixed
     ui.set_size(item, 0, WIDGET_HEIGHT);
     // attach our slider event handler and capture two classes of events
-    //ui.set_handler(item, Some(sliderhandler), BUTTON0_DOWN | BUTTON0_CAPTURE);
+    ui.set_handler(item, Some(sliderhandler), BUTTON0_DOWN|BUTTON0_CAPTURE);
     ui.append(parent, item);
     return item;
 }
 
-fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, value: &'a Cell<i32>) -> Item {
+fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, value: Gc<Cell<i32>>) -> Item {
     let rad = Radio { iconid:iconid, text:label.to_string(), value:value };
     let item = ui.item(rad);
     ui.set_handle(item, handle);
     let w = if label.len() == 0 { TOOL_WIDTH } else { 0 };
     ui.set_size(item, w, WIDGET_HEIGHT);
-    //ui.set_handler(item, Some(radiohandler), BUTTON0_DOWN);
+    ui.set_handler(item, Some(radiohandler), BUTTON0_DOWN);
     ui.append(parent, item);
     return item;
 }
@@ -262,7 +264,7 @@ fn demohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
     let widget = ui.get_widget(item);
     match *widget {
         Button { text: ref mut label, iconid:_ } => {
-            println!("clicked: {} {}", handle, label);
+            println!("clicked: #{} {}", handle, label);
         }
         _ => {}
     }
@@ -272,8 +274,9 @@ fn checkhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
     let widget = ui.get_widget(item);
     match *widget {
         Check { text: ref mut label, option: option } => {
-            println!("clicked: {} {}", handle, label);
-            option.set(!option.get());
+            println!("clicked: #{} {}", handle, label);
+            let cell: Gc<Cell<bool>> = option;
+            cell.set(!cell.get());
         }
         _ => {}
     }
@@ -285,8 +288,9 @@ fn radiohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
     let widget = ui.get_widget(item);
     match *widget {
         Radio { iconid:_, text: ref mut label, value: value } => {
-            println!("clicked: {} {}", handle, label);
-            value.set(kidid);
+            println!("clicked: #{} {}", handle, label);
+            let cell: Gc<Cell<i32>> = value;
+            cell.set(kidid);
         }
         _ => {}
     }
@@ -295,6 +299,8 @@ fn radiohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
 // simple logic for a slider
 // event handler for slider (same handler for all sliders)
 fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
+    println!("handle slider #{} event {}", ui.get_handle(item), event);
+
     // starting offset of the currently active slider
     static mut sliderstart: f32 = 0.0;
     let pos = ui.get_cursor_start_delta();
@@ -302,6 +308,7 @@ fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
     let widget = ui.get_widget(item);
     match event {
         BUTTON0_DOWN => {
+            println!("button0 down");
             match *widget {
                 Slider { text:_, progress: currval } => {
                     unsafe { sliderstart = currval.get() };
@@ -310,6 +317,7 @@ fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
             }
         }
         BUTTON0_CAPTURE => {
+            println!("button0 capture");
             let val = unsafe { sliderstart + (pos.x as f32 / rc.w as f32) };
             let val = clamp(val, 0.0, 1.0);
             match *widget {
@@ -319,7 +327,7 @@ fn sliderhandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
                 _ => {}
             }
         }
-        _ => {}
+        _ => { println!("missed a slider event: {}", event) }
     }
 }
 
@@ -370,29 +378,21 @@ fn hgrouphandler(ui: &mut Context<Widget>, parent: Item, event: EventFlags) {
 // end handlers
 ///////////////////////////////////////////////////////////////////////
 
-pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, (mx,my): (i32,i32), btn: bool, _t: f32)
-{
-    let enum1     = Cell::new(1i32);
-    let progress1 = Cell::new(0.25f32);
-    let progress2 = Cell::new(0.75f32);
-    let option1   = Cell::new(true);
-    let option2   = Cell::new(false);
-    let option3   = Cell::new(false);
+pub fn create<'a>() -> Context<Widget<'a>> {
+    Context::create_context()
+}
 
-    let mut oui = Context::create_context();
-    let ui = &mut oui;
+// pub fn init<'a>(ui: &mut Context<Widget<'a>>, data: &'a AppData) {
+pub fn init<'a, 'w>(app: &mut super::App<'w>) {
 
-    // apply inputs: mouse and buttons, keys if needed
-
-    ui.set_button(0/*left button*/, btn);
-    ui.set_cursor(mx, my);
+    let ui = &mut app.ui;
 
     // setup the UI
 
-    ui.clear();
+    ui.clear();  // removes any previous items, currently will break if multiple-re-init
 
-    let bg = ctx.theme().backgroundColor;
-    ctx.nvg().draw_background(0.0, 0.0, w, h, bg);
+    // build the ui hierarchy: start at root,
+    // compose elements into nested groups that flow
 
     let root = panel(ui);
     // position root element
@@ -409,10 +409,10 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, (mx,my): (i32,i32), btn: bool
 
     {
         let h = hgroup(ui, col);
-        radio(ui, h, 3, icon_id(6,  3), "Item 3.0", &enum1);
-        radio(ui, h, 4, icon_id(0, 10), "", &enum1);
-        radio(ui, h, 5, icon_id(1, 10), "", &enum1);
-        radio(ui, h, 6, icon_id(6,  3), "Item 3.3", &enum1);
+        radio(ui, h, 3, icon_id(6,  3), "Item 3.0", app.data.enum1);
+        radio(ui, h, 4, icon_id(0, 10), "", app.data.enum1);
+        radio(ui, h, 5, icon_id(1, 10), "", app.data.enum1);
+        radio(ui, h, 6, icon_id(6,  3), "Item 3.3", app.data.enum1);
     }
 
     {
@@ -423,26 +423,41 @@ pub fn draw(ctx: &mut ThemedContext, w:f32, h:f32, (mx,my): (i32,i32), btn: bool
         button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
         button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
         let colr = vgroup(ui, rows);
-        ui.set_frozen(colr, option1.get());
+        //ui.set_frozen(colr, app.data.option1.get());
         label(ui, colr, no_icon(), "Items 4.1:");
         let colr = vgroup(ui, colr);
-        slider(ui, colr,  9, "Item 4.1.0", &progress1);
-        slider(ui, colr, 10, "Item 4.1.1", &progress2);
+        slider(ui, colr,  9, "Item 4.1.0", app.data.progress1);
+        slider(ui, colr, 10, "Item 4.1.1", app.data.progress2);
     }
 
     button(ui, col, 11, icon_id(6, 3), "Item 5", None);
 
-    check(ui, col, 12, "Frozen", &option1);
-    check(ui, col, 13, "Item 7", &option2);
-    check(ui, col, 14, "Item 8", &option3);
+    check(ui, col, 12, "Frozen", app.data.option1);
+    check(ui, col, 13, "Item 7", app.data.option2);
+    check(ui, col, 14, "Item 8", app.data.option3);
+
+    // structure is built, append-handlers have run (so edge-grabbers are set);
+    // now complete the layout
 
     ui.layout();
+}
+
+pub fn update<'a>(ui: &mut Context<Widget<'a>>, (mx,my): (i32,i32), btn: bool, _t: f32) {
+    // apply inputs: mouse and buttons, keys if needed
+
+    ui.set_button(0/*left button*/, btn);
+    ui.set_cursor(mx, my);
 
     // process input triggers to update item states
-
     ui.process();
+}
 
+pub fn draw<'a>(ui: &mut Context<Widget<'a>>, ctx: &mut ThemedContext, w:f32, h:f32)
+{
     // draw the ui
+    let bg = ctx.theme().backgroundColor;
+    ctx.nvg().draw_background(0.0, 0.0, w, h, bg);
 
+    let root = ui.root();
     draw_ui(ui, ctx, root, 0, 0);
 }

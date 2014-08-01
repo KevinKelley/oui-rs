@@ -20,27 +20,28 @@ path = "../../../blendish-rs"
 #git = "https://github.com/KevinKelley/blendish-rs"
 
 [dependencies.nanovg]
-#path = "../../../nanovg-rs"
-git = "https://github.com/KevinKelley/nanovg-rs"
+path = "../../../nanovg-rs"
+#git = "https://github.com/KevinKelley/nanovg-rs"
 
 
 [dependencies.glfw]
-git = "https://github.com/bjz/glfw-rs"
+path = "../../../glfw-rs"
+#git = "https://github.com/bjz/glfw-rs"
 
 [dependencies.gl]
 git = "https://github.com/bjz/gl-rs"
 
 
 [dependencies.piston]
-# path = "../piston"
-git = "https://github.com/PistonDevelopers/piston"
+path = "../../../piston"
+#git = "https://github.com/PistonDevelopers/piston"
 
-[dependencies.graphics]
-# path = "../rust-graphics"
-git = "https://github.com/pistondevelopers/rust-graphics"
+# [dependencies.graphics]
+# # path = "../rust-graphics"
+# git = "https://github.com/pistondevelopers/rust-graphics"
 
 [dependencies.glfw_game_window]
-# path = "../glfw_game_window"
-git = "https://github.com/PistonDevelopers/glfw_game_window"
+path = "../../../glfw_game_window"
+#git = "https://github.com/PistonDevelopers/glfw_game_window"
 
 

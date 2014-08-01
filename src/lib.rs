@@ -46,6 +46,7 @@ pub enum ItemState {
 }
 
 bitflags!(
+    #[deriving(Show)]
     flags LayoutFlags: u32 {
         // anchor to left item or left side of parent
         static LEFT    = ffi::UI_LEFT,
@@ -73,8 +74,8 @@ impl LayoutFlags {
     //pub fn from_bits(bits: u32) -> LayoutFlags { LayoutFlags { bits: bits } }
 }
 
-
 bitflags!(
+    #[deriving(Show)]
     flags EventFlags: u32 {
         // on button 0 down
         static BUTTON0_DOWN     = ffi::UI_BUTTON0_DOWN,
@@ -101,6 +102,7 @@ bitflags!(
 //pub type Handler = Option<extern "C" fn(arg1: i32, arg2: EventFlags)>;
 pub type Handler<Wgt> = Option<fn(ui: &mut Context<Wgt>, arg1: Item, arg2: EventFlags)>;
 
+#[deriving(Eq,PartialEq, Show)]
 #[repr(C)]
 pub struct Vec2 {
     pub x: i32,
@@ -129,6 +131,7 @@ impl<'a> IndexMut<uint, i32> for Vec2 {
     }
 }
 
+#[deriving(Eq,PartialEq, Show)]
 #[repr(C)]
 pub struct Rect {
     pub x: i32,
@@ -140,6 +143,7 @@ impl Rect {
     pub fn zero() -> Rect { Rect { x:0, y:0, w:0, h:0 } }
     pub fn as_mut_slice(&mut self) -> &mut [i32, ..4u] { unsafe { std::mem::transmute(self) } }
 }
+// indexers turn out to be not really useful, because mut
 impl<'a> Index<uint, i32> for Rect {
     fn index<'a>(&'a self, index: &uint) -> &'a i32 {
         match *index {
@@ -301,13 +305,9 @@ impl<'a, Wgt> IndexMut<Item, ItemImp<Wgt>> for  Context<Wgt> {
 }
 
 
-//INLINE
 pub fn max(a: i32, b: i32) -> i32 { if a>b {a} else {b} }
-//INLINE
 pub fn min(a: i32, b: i32) -> i32 { if a<b {a} else {b} }
 
-
-//static context: *mut Context = create_context();
 
 impl<Wgt> Context<Wgt> {
 
@@ -395,7 +395,7 @@ impl<Wgt> Context<Wgt> {
         }
     }
 
-    fn root(&mut self) -> Item {
+    pub fn root(&mut self) -> Item {
         if self.count == 0 { return Item::none() }
         Item::wrap(0)
     }

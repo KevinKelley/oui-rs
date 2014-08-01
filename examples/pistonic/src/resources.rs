@@ -3,14 +3,14 @@
 use nanovg::Ctx;
 use nanovg::{Image,Font};
 
-/// use unicode characters for icons
-static NO_ICON: 		   char = '\0';
-static ICON_SEARCH:        char = '\U0001F50D';
-static ICON_CIRCLED_CROSS: char = '\u2716';
-static ICON_CHEVRON_RIGHT: char = '\uE75E';
-static ICON_CHECK:         char = '\u2713';
-static ICON_LOGIN:         char = '\uE740';
-static ICON_TRASH:         char = '\uE729';
+///// use unicode characters for icons
+//static NO_ICON: 		   char = '\0';
+//static ICON_SEARCH:        char = '\U0001F50D';
+//static ICON_CIRCLED_CROSS: char = '\u2716';
+//static ICON_CHEVRON_RIGHT: char = '\uE75E';
+//static ICON_CHECK:         char = '\u2713';
+//static ICON_LOGIN:         char = '\uE740';
+//static ICON_TRASH:         char = '\uE729';
 
 
 pub struct Resources {
