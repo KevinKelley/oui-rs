@@ -5,7 +5,6 @@
 #![allow(unused_variable)]
 #![allow(dead_code)]
 
-//extern crate graphics;
 extern crate piston;
 extern crate glfw_game_window;
 
@@ -48,14 +47,8 @@ pub struct AppData {
     pub option2:  Gc<Cell<bool>>,
     pub option3:  Gc<Cell<bool>>,
 }
-#[unsafe_destructor]
-impl Drop for AppData {
-    fn drop(&mut self) {
-        println!("drop appdata {}", self);
-    }
-}
-
 pub fn init_app_data() -> AppData {
+    // fake load-from-storage
     AppData {
         enum1:     box (GC) Cell::new(0),
         progress1: box (GC) Cell::new(0.25),
@@ -65,6 +58,14 @@ pub fn init_app_data() -> AppData {
         option3:   box (GC) Cell::new(false),
     }
 }
+#[unsafe_destructor]
+impl Drop for AppData {
+    fn drop(&mut self) {
+        // fake save-to-storage
+        println!("drop appdata {}", self);
+    }
+}
+
 
 pub struct App<'a> {
     mouse: (i32,i32),           // current mouse pos
@@ -107,7 +108,7 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
         ui::update(&mut self.ui, self.mouse, self.button, self.elapsed_time as f32);
     }
 
-    #[allow(unused_variable)]
+    //#[allow(unused_variable)]
     fn render(&mut self, _window: &mut W, args: &RenderArgs) {
         let (w,  h) = (args.width as f32, args.height as f32);
         let pxRatio = 1.0;
@@ -122,6 +123,8 @@ impl<'a, W: GameWindow> Game<W> for App<'a>
 
         self.nvg().end_frame();
     }
+
+    // capture events, for forwarding to ui in its update cycle
     fn mouse_press(&mut self, _window: &mut W, args: &MousePressArgs) {
         self.button = true;
     }
@@ -147,6 +150,7 @@ fn main() {
     let mut app = App::new();
 
     let game_iter_settings = GameIteratorSettings {
+            // sim and ui can run at different rates
             updates_per_second: 120,
             max_frames_per_second: 60,
         };

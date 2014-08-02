@@ -29,7 +29,7 @@ pub enum Widget<'a> {
     Label { iconid:i32, text:String },
     Button { iconid:i32, text:String },
     Check { text:String, option: Gc<Cell<bool>> },
-    Radio { iconid:i32, text:String, value: Gc<Cell<i32>> },
+    Radio { iconid:i32, text:String, index: Gc<Cell<i32>> },
     Slider { text:String, progress: Gc<Cell<f32>> },
     Row { unused:i8 /*compiler doesn't support empty struct variants*/},
     Column { unused:i8 },
@@ -43,8 +43,8 @@ pub enum Widget<'a> {
 fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
     let parent = ui.parent(item);
     if parent.invalid() { return CORNER_NONE };
-    let numkids = ui.get_child_count(parent);
-    if numkids < 2 { return CORNER_NONE; }
+    let numsibs = ui.get_child_count(parent);
+    if numsibs < 2 { return CORNER_NONE; }
     let kidid = ui.get_child_id(item);
     let widget = ui.get_widget(parent);
     match *widget {
@@ -52,7 +52,7 @@ fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
             // first child, sharp corners down
             if kidid == 0 { return CORNER_DOWN; }
             // last child, sharp corners up
-            else if kidid == numkids-1 { return CORNER_TOP; }
+            else if kidid == numsibs-1 { return CORNER_TOP; }
             // middle child, sharp everywhere
             else { return CORNER_ALL; }
         }
@@ -60,7 +60,7 @@ fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
             // first child, sharp right
             if kidid == 0 { return CORNER_RIGHT; }
             // last child, sharp left
-            else if kidid == numkids-1 { return CORNER_LEFT; }
+            else if kidid == numsibs-1 { return CORNER_LEFT; }
             // middle child, sharp all
             else { return CORNER_ALL; }
         }
@@ -69,11 +69,12 @@ fn corner_flags(ui: &mut Context<Widget>, item: Item) -> CornerFlags {
     return CORNER_NONE;
 }
 
+// TODO consolidate oui::ItemState and blendish::WidgetState
 ////oui::ItemState
-//    COLD   = ffi::UI_COLD,
-//    HOT    = ffi::UI_HOT,
-//    ACTIVE = ffi::UI_ACTIVE,
-//    FROZEN = ffi::UI_FROZEN,
+//    COLD   = ffi::UI_COLD,    // default
+//    HOT    = ffi::UI_HOT,     // hover
+//    ACTIVE = ffi::UI_ACTIVE,  // active
+//    FROZEN = ffi::UI_FROZEN,  // dimmed, disabled
 ////blendish::WidgetState
 //    DEFAULT  = ffi::BND_DEFAULT,
 //    HOVER    = ffi::BND_HOVER,
@@ -89,14 +90,12 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
     let item_state = ui.get_state(item);
 
     // OUI extends state, adding a "frozen" which gets dimmed
-    let widget_state = match item_state {
-        COLD => DEFAULT,
-        HOT => HOVER,
-        oui::ACTIVE => blendish::ACTIVE,
-        _ => DEFAULT
+    let (widget_state, frozen) = match item_state {
+        COLD => (DEFAULT, false),
+        HOT => (HOVER, false),
+        oui::ACTIVE => (blendish::ACTIVE, false),
+        _ => (DEFAULT, true)
     };
-
-    let frozen = item_state == FROZEN;
     if frozen {
         vg.nvg().global_alpha(DISABLED_ALPHA);
     }
@@ -126,9 +125,9 @@ fn draw_ui(ui: &mut Context<Widget>, vg: &mut ThemedContext, item: Item, x: i32,
                 else { widget_state };
             vg.draw_option_button(x, y, w, h, state, label.as_slice());
         }
-        Radio { iconid:iconid, text:ref label, value:value } => {
+        Radio { iconid:iconid, text:ref label, index:index } => {
             let state =
-                if (*value).get() == kidid { blendish::ACTIVE }
+                if (*index).get() == kidid { blendish::ACTIVE }
                 else { widget_state };
             vg.draw_radio_button(x, y, w, h,
                 cornerflags, state,
@@ -212,8 +211,8 @@ fn slider<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, label: 
     return item;
 }
 
-fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, value: Gc<Cell<i32>>) -> Item {
-    let rad = Radio { iconid:iconid, text:label.to_string(), value:value };
+fn radio<'a>(ui:&mut Context<Widget<'a>>, parent: Item, handle: Handle, iconid: i32, label: &str, index: Gc<Cell<i32>>) -> Item {
+    let rad = Radio { iconid:iconid, text:label.to_string(), index:index };
     let item = ui.item(rad);
     ui.set_handle(item, handle);
     let w = if label.len() == 0 { TOOL_WIDTH } else { 0 };
@@ -287,9 +286,9 @@ fn radiohandler(ui: &mut Context<Widget>, item: Item, event: EventFlags) {
     let kidid = ui.get_child_id(item);
     let widget = ui.get_widget(item);
     match *widget {
-        Radio { iconid:_, text: ref mut label, value: value } => {
+        Radio { iconid:_, text: ref mut label, index: index } => {
             println!("clicked: #{} {}", handle, label);
-            let cell: Gc<Cell<i32>> = value;
+            let cell: Gc<Cell<i32>> = index;
             cell.set(kidid);
         }
         _ => {}
@@ -417,17 +416,17 @@ pub fn init<'a, 'w>(app: &mut super::App<'w>) {
 
     {
         let rows = row(ui, col);
-        let coll = vgroup(ui, rows);
-        label(ui, coll, no_icon(), "Items 4.0:");
-        let coll = vgroup(ui, coll);
-        button(ui, coll, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
-        button(ui, coll, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
-        let colr = vgroup(ui, rows);
-        //ui.set_frozen(colr, app.data.option1.get());
-        label(ui, colr, no_icon(), "Items 4.1:");
-        let colr = vgroup(ui, colr);
-        slider(ui, colr,  9, "Item 4.1.0", app.data.progress1);
-        slider(ui, colr, 10, "Item 4.1.1", app.data.progress2);
+        let left_head = vgroup(ui, rows);
+        label(ui, left_head, no_icon(), "Items 4.0:");
+        let left_body = vgroup(ui, left_head);
+        button(ui, left_body, 7, icon_id(6, 3), "Item 4.0.0", Some(demohandler));
+        button(ui, left_body, 8, icon_id(6, 3), "Item 4.0.1", Some(demohandler));
+        let right_head = vgroup(ui, rows);
+        //ui.set_frozen(right_head, app.data.option1.get());
+        label(ui, right_head, no_icon(), "Items 4.1:");
+        let right_body = vgroup(ui, right_head);
+        slider(ui, right_body,  9, "Item 4.1.0", app.data.progress1);
+        slider(ui, right_body, 10, "Item 4.1.1", app.data.progress2);
     }
 
     button(ui, col, 11, icon_id(6, 3), "Item 5", None);
@@ -455,8 +454,7 @@ pub fn update<'a>(ui: &mut Context<Widget<'a>>, (mx,my): (i32,i32), btn: bool, _
 pub fn draw<'a>(ui: &mut Context<Widget<'a>>, ctx: &mut ThemedContext, w:f32, h:f32)
 {
     // draw the ui
-    let bg = ctx.theme().backgroundColor;
-    ctx.nvg().draw_background(0.0, 0.0, w, h, bg);
+    ctx.draw_background(0.0, 0.0, w, h);
 
     let root = ui.root();
     draw_ui(ui, ctx, root, 0, 0);
