@@ -33,7 +33,7 @@ mod ui;
 mod resources;
 
 ///////////////////////////////////////////////////////////////////////
-// AppData (some simulated state for UI to modify
+// AppData (some simulated state for UI to modify)
 
 #[deriving(Show)]
 pub struct AppData {

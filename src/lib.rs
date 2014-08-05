@@ -7,95 +7,92 @@
 extern crate libc;
 use std::mem::{zeroed};
 
-mod ffi;  // just for some constants; this is a port, not a wrap
+//mod ffi;  // just for some constants; this is a port, not a wrap
 
-// an OUI context holds a nested hierarchy of Item's.
-// there're 3 kinds of info that can be associated with an Item:
-// Handle, Widget, and Data.
-// Handle is an opaque ID that isn't used internally; it's just a tag
+// an OUI context holds a nested hierarchy of Items.
+// there are 3 kinds of info that can be associated with an Item:
+// Tag, Widget, and Data.
+// Tag is an opaque ID that isn't used internally; it's just a tag
 // you can apply to a given item.
 // Widget is whatever you parameterize the context with: each Item
 // will then contain a Widget within it.  Handy for stateful UI.
 // Data is an arbitrary array of u8, that can be created on a per-item
 // basis.  Its memory is allocated from within a pool in the Context.
 
-pub type Handle = u64;
+pub type Tag = u64;
 
 // maximum number of items that may be added
-pub static MAX_ITEMS:u32 = ffi::UI_MAX_ITEMS;
+//pub static MAX_ITEMS:u32 = ffi::UI_MAX_ITEMS;
+// maximum depth of nested containers
+//pub static MAX_DEPTH:u32 = ffi::UI_MAX_DEPTH;
 // maximum size in bytes reserved for storage of application dependent data
 // as passed to uiAllocData().
-pub static MAX_BUFFERSIZE:u32 = ffi::UI_MAX_BUFFERSIZE;
+static MAX_BUFFERSIZE:u32 = 1048576; //ffi::UI_MAX_BUFFERSIZE;
 // maximum size in bytes of a single data buffer passed to uiAllocData().
-pub static MAX_DATASIZE:u32 = ffi::UI_MAX_DATASIZE;
-// maximum depth of nested containers
-pub static MAX_DEPTH:u32 = ffi::UI_MAX_DEPTH;
+static MAX_DATASIZE:u32 = 4096; //ffi::UI_MAX_DATASIZE;
 
 
 #[deriving(Eq,PartialEq, Show)]
 #[repr(u32)]
 pub enum ItemState {
-    // the item is inactive
-    COLD   = ffi::UI_COLD,
-    // the item is inactive, but the cursor is hovering over this item
-    HOT    = ffi::UI_HOT,
-    // the item is toggled or activated (depends on item kind)
-    ACTIVE = ffi::UI_ACTIVE,
-    // the item is unresponsive
-    FROZEN = ffi::UI_FROZEN,
+    /// the item is inactive
+    COLD   = 0,
+    /// the item is inactive, but the cursor is hovering over this item
+    HOT    = 1,
+    /// the item is toggled or activated (depends on item kind)
+    ACTIVE = 2,
+    /// the item is unresponsive
+    FROZEN = 3,
 }
 
 bitflags!(
     #[deriving(Show)]
     flags LayoutFlags: u32 {
         // anchor to left item or left side of parent
-        static LEFT    = ffi::UI_LEFT,
+        static LEFT    = 1,
         // anchor to top item or top side of parent
-        static TOP     = ffi::UI_TOP,
+        static TOP     = 2,
         // anchor to right item or right side of parent
-        static RIGHT   = ffi::UI_RIGHT,
+        static RIGHT   = 4,
         // anchor to bottom item or bottom side of parent
-        static DOWN    = ffi::UI_DOWN,
+        static DOWN    = 8,
         // anchor to both left and right item or parent borders
-        static HFILL   = ffi::UI_HFILL,
+        static HFILL   = 5,
         // anchor to both top and bottom item or parent borders
-        static VFILL   = ffi::UI_VFILL,
+        static VFILL   = 10,
         // center horizontally, with left margin as offset
-        static HCENTER = ffi::UI_HCENTER,
+        static HCENTER = 0,
         // center vertically, with top margin as offset
-        static VCENTER = ffi::UI_VCENTER,
+        static VCENTER = 0,
         // center in both directions, with left/top margin as offset
-        static CENTER  = ffi::UI_CENTER,
+        static CENTER  = 0,
         // anchor to all four directions
-        static FILL    = ffi::UI_FILL
+        static FILL    = 15
     }
 )
-impl LayoutFlags {
-    //pub fn from_bits(bits: u32) -> LayoutFlags { LayoutFlags { bits: bits } }
-}
 
 bitflags!(
     #[deriving(Show)]
     flags EventFlags: u32 {
         // on button 0 down
-        static BUTTON0_DOWN     = ffi::UI_BUTTON0_DOWN,
+        static BUTTON0_DOWN     = 1,
         // on button 0 up
         // when this event has a handler, uiGetState() will return UI_ACTIVE as
         // long as button 0 is down.
-        static BUTTON0_UP       = ffi::UI_BUTTON0_UP,
+        static BUTTON0_UP       = 2,
         // on button 0 up while item is hovered
         // when this event has a handler, uiGetState() will return UI_ACTIVE
         // when the cursor is hovering the items rectangle; this is the
         // behavior expected for buttons.
-        static BUTTON0_HOT_UP   = ffi::UI_BUTTON0_HOT_UP,
+        static BUTTON0_HOT_UP   = 4,
         // item is being captured (button 0 constantly pressed);
         // when this event has a handler, uiGetState() will return UI_ACTIVE as
         // long as button 0 is down.
-        static BUTTON0_CAPTURE  = ffi::UI_BUTTON0_CAPTURE,
+        static BUTTON0_CAPTURE  = 8,
         // item has received a new child
         // this can be used to allow container items to configure child items
         // as they appear.
-        static APPEND           =  ffi::UI_APPEND
+        static APPEND           = 16
     }
 )
 
@@ -169,10 +166,7 @@ impl<'a> IndexMut<uint, i32> for Rect {
 
 //////////////////////////////oui/////////////////////////////////////
 
-
-//#define UI_MAX_KIND 16
-
-#[deriving(Eq, PartialEq, Clone)]
+#[deriving(Eq, PartialEq, Clone, Show)]
 pub struct Item {
     itemid: i32
 }
@@ -183,10 +177,10 @@ impl Item {
     pub fn invalid(&self) -> bool { !self.valid() }
 }
 pub struct ItemImp<Wgt> {
-    // declaration independent unique handle (for persistence)
-    handle: Handle,
+    // declaration independent opaque tag (for persistence)
+    tag: Tag,
 
-    // handler
+    // event handler
     handler: Handler<Wgt>,
 
     // container structure
@@ -202,7 +196,7 @@ pub struct ItemImp<Wgt> {
 
     // parent item
     parent: Item,
-    // index of kid relative to parent (what number child am I?)
+    // index of kid (this item) relative to parent (what number child am I?)
     kidid: i32,
     // index of next sibling with same parent
     nextitem: Item,
@@ -232,12 +226,14 @@ pub struct ItemImp<Wgt> {
     widget: Wgt,
 
     // index of data or -1 for none
-    data: int,  // Option<uint>,
+    data: int,
     // size of data
     datasize: uint,
+
     // a combination of Events
     event_flags: EventFlags,
 }
+
 impl<Wgt> ItemImp<Wgt> {
     fn new(wgt:Wgt) -> ItemImp<Wgt> {
         let mut item: ItemImp<Wgt> = unsafe { zeroed() };
@@ -258,8 +254,8 @@ impl<Wgt> ItemImp<Wgt> {
 }
 
 enum State {
-    STATE_IDLE = 0,
-    STATE_CAPTURE,
+    IDLE = 0,
+    CAPTURE,
 }
 
 pub struct Context<Wgt> {
@@ -275,34 +271,32 @@ pub struct Context<Wgt> {
     // where the cursor is currently
     cursor: Vec2,
 
-    hot_handle: Handle,
-    active_handle: Handle,
+    hot_tag: Tag,
+    active_tag: Tag,
     hot_item: Item,
     active_item: Item,
     hot_rect: Rect,
     active_rect: Rect,
     state: State,
 
-    count: i32,
-    items: Vec<ItemImp<Wgt>>, // [ItemImp<Wgt>, ..MAX_ITEMS],
+    items: Vec<ItemImp<Wgt>>,
 
     datasize: uint,
     data: [u8, ..MAX_BUFFERSIZE],
 }
 
-impl<'a, Wgt> Index<Item, ItemImp<Wgt>> for Context<Wgt> {
-    fn index<'a>(&'a self, index: &Item) -> &'a ItemImp<Wgt> {
-        assert!((index.itemid >= 0) && (index.itemid < self.count));
-        &self.items[index.itemid as uint]
-    }
-}
-impl<'a, Wgt> IndexMut<Item, ItemImp<Wgt>> for  Context<Wgt> {
-    fn index_mut<'a>(&'a mut self, index: &Item) -> &'a mut ItemImp<Wgt> {
-        assert!((index.itemid >= 0) && (index.itemid < self.count));
-
-        self.items.get_mut(index.itemid as uint)
-    }
-}
+//impl<'a, Wgt> Index<Item, ItemImp<Wgt>> for Context<Wgt> {
+//    fn index<'a>(&'a self, index: &Item) -> &'a ItemImp<Wgt> {
+//        //assert!((index.itemid >= 0) && (index.itemid < self.count()));
+//        &self.items[index.itemid as uint]
+//    }
+//}
+//impl<'a, Wgt> IndexMut<Item, ItemImp<Wgt>> for  Context<Wgt> {
+//    fn index_mut<'a>(&'a mut self, index: &Item) -> &'a mut ItemImp<Wgt> {
+//        //assert!((index.itemid >= 0) && (index.itemid < self.count()));
+//        self.items.get_mut(index.itemid as uint)
+//    }
+//}
 
 
 pub fn max(a: i32, b: i32) -> i32 { if a>b {a} else {b} }
@@ -312,9 +306,6 @@ pub fn min(a: i32, b: i32) -> i32 { if a<b {a} else {b} }
 impl<Wgt> Context<Wgt> {
 
     pub fn create_context() -> Context<Wgt> {
-        //Context *ctx = (Context *)malloc(sizeof(Context));
-        //memset(ctx, 0, sizeof(Context));
-        //return ctx;
         Context {
             // button state in this frame
             buttons: 0,
@@ -328,16 +319,15 @@ impl<Wgt> Context<Wgt> {
             // where the cursor is currently
             cursor: Vec2::zero(),
 
-            hot_handle: -1,
-            active_handle: -1,
+            hot_tag: -1,
+            active_tag: -1,
             hot_item: Item::none(),
             active_item: Item::none(),
             hot_rect: Rect::zero(),
             active_rect: Rect::zero(),
-            state: STATE_IDLE,
+            state: IDLE,
 
-            count: 0,
-            items: Vec::new(), //[ItemImp::new(), ..MAX_ITEMS as uint],
+            items: Vec::new(),
 
             datasize: 0u,
             data: [0, ..MAX_BUFFERSIZE as uint],
@@ -396,33 +386,37 @@ impl<Wgt> Context<Wgt> {
     }
 
     pub fn root(&mut self) -> Item {
-        if self.count == 0 { return Item::none() }
+        if self.count() == 0 { return Item::none() }
         Item::wrap(0)
     }
 
+    fn count(&self) -> uint {
+        self.items.len()
+    }
+
     fn get(&mut self, item: Item) -> &mut ItemImp<Wgt> {
-        //assert!((item.itemid >= 0) && (item.itemid < self.count));
+        //assert!((item.itemid >= 0) && (item.itemid < self.count()));
         //let item = item.itemid as uint;
         //return &mut self.items[item];
-        //&mut (*self)[item]
+        //&mut self.get(item)
 
-        assert!((item.itemid >= 0) && (item.itemid < self.count));
+        assert!((item.itemid >= 0) && ((item.itemid as uint) < self.count()));
 
         self.items.get_mut(item.itemid as uint)
     }
 
     pub fn clear(&mut self) {
-        self.count = 0;
+        //self.count = 0;
+        self.items.clear();
         self.datasize = 0u;
         self.hot_item = Item::none();
         self.active_item = Item::none();
     }
 
     pub fn item(&mut self, wgt: Wgt) -> Item {
-        assert!((self.count as u32) < MAX_ITEMS);
-        let idx = self.count;
-                  self.count += 1;
-        let it = Item::wrap(idx);
+        //assert!((self.count() as u32) < MAX_ITEMS);
+        let idx = self.count();
+        let it = Item::wrap(idx as i32);
 
         let item = ItemImp::new(wgt);
         self.items.push(item);
@@ -604,20 +598,20 @@ impl<Wgt> Context<Wgt> {
         return self.data.mut_slice(alloc as uint, (alloc+size) as uint);
     }
 
-    pub fn set_handle(&mut self, item: Item, handle: Handle) {
-        self.get(item).handle = handle;
-        if handle != -1 {
-            if handle == self.hot_handle {
+    pub fn set_tag(&mut self, item: Item, tag: Tag) {
+        self.get(item).tag = tag;
+        if tag != -1 {
+            if tag == self.hot_tag {
                 self.hot_item = item;
             }
-            if handle == self.active_handle {
+            if tag == self.active_tag {
                 self.active_item = item;
             }
         }
     }
 
-    pub fn get_handle(&mut self, item: Item) -> Handle {
-        return self.get(item).handle;
+    pub fn get_tag(&mut self, item: Item) -> Tag {
+        return self.get(item).tag;
     }
 
     pub fn set_handler(&mut self, item: Item, handler: Handler<Wgt>, flags: EventFlags) {
@@ -786,10 +780,10 @@ impl<Wgt> Context<Wgt> {
     fn layout_child_item(&mut self, parent: Item, item: Item, dyncount: &mut i32, dim: uint) {
         //let pitem = self.get(item);
 
-        if (*self)[item].visited & (4<<dim) != 0 {return};
-        (*self)[item].visited |= 4<<dim;
+        if self.get(item).visited & (4<<dim) != 0 {return};
+        self.get(item).visited |= 4<<dim;
 
-        if (*self)[item].size[dim] == 0 {
+        if self.get(item).size[dim] == 0 {
             *dyncount = (*dyncount)+1;
         }
 
@@ -798,20 +792,20 @@ impl<Wgt> Context<Wgt> {
         let mut x = 0;
         let mut s = self.get(parent).rect[wdim];
 
-        let flags = (*self)[item].layout_flags.bits>>dim;
+        let flags = self.get(item).layout_flags.bits>>dim;
         let flags = LayoutFlags::from_bits(flags).expect("bitfail");
-        let hasl = flags.contains(LEFT) && (*self)[item].relto[dim].valid();
-        let hasr = flags.contains(RIGHT) && (*self)[item].relto[wdim].valid();
+        let hasl = flags.contains(LEFT) && self.get(item).relto[dim].valid();
+        let hasr = flags.contains(RIGHT) && self.get(item).relto[wdim].valid();
 
         if hasl {
-            let l = (*self)[item].relto[dim];
+            let l = self.get(item).relto[dim];
             self.layout_child_item(parent, l, dyncount, dim);
             let pl = self.get(l);
             x = pl.rect[dim]+pl.rect[wdim]+pl.margins[wdim];
             s -= x;
         }
         if hasr {
-            let r = (*self)[item].relto[wdim];
+            let r = self.get(item).relto[wdim];
             self.layout_child_item(parent, r, dyncount, dim);
             let pr = self.get(r);
             s = pr.rect[dim]-pr.margins[dim]-x;
@@ -819,40 +813,40 @@ impl<Wgt> Context<Wgt> {
 
         match flags & HFILL {
             LEFT => {
-                (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+                self.get(item).rect[dim] = x+self.get(item).margins[dim];
             }
             RIGHT => {
-                (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+                self.get(item).rect[dim] = x+s-self.get(item).rect[wdim]-self.get(item).margins[wdim];
             }
             HFILL => {
-                if (*self)[item].size[dim] > 0 { // hard maximum size; can't stretch
+                if self.get(item).size[dim] > 0 { // hard maximum size; can't stretch
                     if !hasl {
-                        (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
+                        self.get(item).rect[dim] = x+self.get(item).margins[dim];
                     }
                     else {
-                        (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+                        self.get(item).rect[dim] = x+s-self.get(item).rect[wdim]-self.get(item).margins[wdim];
                     }
                 } else {
-                    if true { // !(*self)[item].rect[wdim]) {
-                        let width = (*self)[parent].rect[wdim] - (*self)[parent].computed_size[dim];
+                    if true { // !self.get(item).rect[wdim]) {
+                        let width = self.get(parent).rect[wdim] - self.get(parent).computed_size[dim];
                         let space = width / (*dyncount);
                         //let rest = width - space*(*dyncount);
                         if !hasl {
-                            (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
-                            (*self)[item].rect[wdim] = s-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
+                            self.get(item).rect[dim] = x+self.get(item).margins[dim];
+                            self.get(item).rect[wdim] = s-self.get(item).margins[dim]-self.get(item).margins[wdim];
                         } else {
-                            (*self)[item].rect[wdim] = space-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
-                            (*self)[item].rect[dim] = x+s-(*self)[item].rect[wdim]-(*self)[item].margins[wdim];
+                            self.get(item).rect[wdim] = space-self.get(item).margins[dim]-self.get(item).margins[wdim];
+                            self.get(item).rect[dim] = x+s-self.get(item).rect[wdim]-self.get(item).margins[wdim];
                         }
                     } else {
-                        (*self)[item].rect[dim] = x+(*self)[item].margins[dim];
-                        (*self)[item].rect[wdim] = s-(*self)[item].margins[dim]-(*self)[item].margins[wdim];
+                        self.get(item).rect[dim] = x+self.get(item).margins[dim];
+                        self.get(item).rect[wdim] = s-self.get(item).margins[dim]-self.get(item).margins[wdim];
                     }
                 }
             }
             //default:
             _ /*HCENTER*/ => {
-                (*self)[item].rect[dim] = x+(s-(*self)[item].rect[wdim])/2+(*self)[item].margins[dim];
+                self.get(item).rect[dim] = x+(s-self.get(item).rect[wdim])/2+self.get(item).margins[dim];
             }
         }
     }
@@ -878,7 +872,7 @@ impl<Wgt> Context<Wgt> {
 
 
     pub fn layout(&mut self) {
-        if self.count == 0 { return; }
+        if self.count() == 0 { return; }
         let root = self.root();
 
         // compute widths
@@ -895,7 +889,7 @@ impl<Wgt> Context<Wgt> {
     }
 
     pub fn process(&mut self) {
-        if self.count == 0 { return; }
+        if self.count() == 0 { return; }
 
         let cursor = self.cursor;
         let root = self.root();
@@ -904,7 +898,7 @@ impl<Wgt> Context<Wgt> {
 
         match self.state {
             //default:
-            STATE_IDLE => {
+            IDLE => {
                 self.start_cursor = cursor;
                 if self.get_button(0) {
                     self.hot_item = Item::none();
@@ -913,12 +907,12 @@ impl<Wgt> Context<Wgt> {
                     if hot.valid() {
                         self.notify_item(hot, BUTTON0_DOWN);
                     }
-                    self.state = STATE_CAPTURE;
+                    self.state = CAPTURE;
                 } else {
                     self.hot_item = hot;
                 }
             }
-            STATE_CAPTURE => {
+            CAPTURE => {
                 if !self.get_button(0) {
                     if active.valid() {
                         self.notify_item(active, BUTTON0_UP);
@@ -927,7 +921,7 @@ impl<Wgt> Context<Wgt> {
                         }
                     }
                     self.active_item = Item::none();
-                    self.state = STATE_IDLE;
+                    self.state = IDLE;
                 } else {
                     if active.valid() {
                         self.notify_item(active, BUTTON0_CAPTURE);
@@ -945,7 +939,7 @@ impl<Wgt> Context<Wgt> {
         self.last_cursor = self.cursor;
         let active = self.active_item;
         let hot = self.hot_item;
-        self.hot_handle = if hot.valid() {self.get_handle(hot)} else {0};
-        self.active_handle = if active.valid() {self.get_handle(active)} else {0};
+        self.hot_tag = if hot.valid() {self.get_tag(hot)} else {0};
+        self.active_tag = if active.valid() {self.get_tag(active)} else {0};
     }
 }
